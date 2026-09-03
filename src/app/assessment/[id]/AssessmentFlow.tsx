@@ -323,7 +323,7 @@ export default function AssessmentFlow({
 
   return (
     <div>
-      <OnbTopBar section={screen.section} onBack={idx > 0 ? back : undefined} />
+      <OnbTopBar section={screen.section} onBack={idx > 0 ? back : () => router.push('/')} />
       <SectionProgress total={screens.length} current={idx} />
 
       <h2 className="onb-question">{screen.title}</h2>
