@@ -30,11 +30,20 @@ pnpm build && pnpm test:e2e   # 双视口端到端冒烟（需 .env，见 docs/D
 - 接口契约：`docs/openapi.json`（OpenAPI 3.1）；
 - 部署：Netlify + Neon 免费层（免信用卡，函数按需启动、无休眠保活），见 `docs/DEPLOYMENT_NETLIFY.md`。
 
-**四、AI 使用声明**
-按要求如实说明 AI 协作边界，见 `docs/AI_USAGE.md`：AI 仅作结对编程与文档辅助，
-架构、业务规则、正确性策略与验收均由本人负责，所有结果可复现。
+**四、评审快速验证（付费前后差异化对比）**
+- 已支付演示会话（样例：男 28/175cm/80kg→70kg/moderate，BMI 26.1 / BMR 1758.75 / TDEE 2726 / 摄入 2226）：
+  - sessionId：`f8192289-3392-4a70-821b-f49f2a90603a`，恢复码：`TeZihYUllSWEIDBKlIK9Mh6HVxck3Z9UxgegwoIQCiE`
+  - 备用：`38cf4d4f-fa25-4c2e-aad0-fb78fbf3c9cc` / `e68w9jM04_fg7R0ZOVWPRXiEO8PNhUyXPj2X9oE5dXs`
+  - 因访问基于 HttpOnly Cookie，无原始 Cookie 时用恢复码调 `POST /api/recovery/redeem`
+    换取新 Cookie 后 `GET /api/assessments/{id}/result` 即见完整字段（恢复码单次有效，二次 401）；
+- 完整可重放 cURL（创建→四步保存→提交→免费结果→幂等支付→完整结果→恢复码）见 README “Reproduce the funnel & payment with cURL”；
+- 数据库 Schema 图（九表关系）见 `docs/DATABASE_SCHEMA.md`。
 
-**五、已知边界（主动声明）**
+**五、AI 使用声明**
+按要求如实说明 AI 协作边界，见 `docs/AI_USAGE.md`（含“我否决过的 AI/常规方案”一节）：
+AI 仅作结对编程与文档辅助，架构、业务规则、正确性策略与验收均由本人负责，所有结果可复现。
+
+**六、已知边界（主动声明）**
 支付为模拟实现，未接真实第三方；未做微服务拆分与完整移动端；
 免费层函数与 Neon 冷启动时首个请求可能略慢。
 

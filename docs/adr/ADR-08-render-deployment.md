@@ -19,3 +19,14 @@ Vercel 注册受阻。需要免信用卡、可用 GitHub 登录、支持标准 N
 
 ## 后果
 平台不锁定业务代码（ADR-02）；需接受冷启动并主动保活；数据库与计算分离，切换平台只改连接与启动配置。
+
+---
+
+## 变更记录（2026-09-03，部署平台转正 Netlify）
+- **状态更新：Superseded by Netlify（实际落地平台）。** Render 在本账号被风控要求绑定信用卡，
+  银联借记卡无法通过 Stripe；随后评估的 Koyeb 已被收购并取消免费层；Vercel 注册受阻依旧。
+- **最终决策**：主部署改为 **Netlify（$0、免信用卡、GitHub 一键、OpenNext runtime 原生支持
+  App Router / Route Handlers / SSR，函数按需启动、无 15 分钟休眠，因此不再需要 cron 保活）**；
+  数据库仍为 Neon 直连端点。配置见 `netlify.toml`，手册见 `docs/DEPLOYMENT_NETLIFY.md`。
+- 业务代码零改动即迁移，印证 ADR-02“平台无关标准 Web Handler 挂载”的决策价值；
+  Render/Koyeb 手册保留在 `docs/` 作为评估留档。线上地址：https://wellpa.netlify.app 。
