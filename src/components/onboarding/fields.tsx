@@ -43,8 +43,7 @@ export function OptionCard({
   return (
     <button
       type="button"
-      role={multi ? 'checkbox' : 'radio'}
-      aria-checked={selected}
+      aria-pressed={selected}
       aria-label={ariaLabel ?? label}
       onClick={onSelect}
       className={`opt-card${selected ? ' selected' : ''}${multi ? ' multi' : ''}`}
@@ -77,8 +76,7 @@ export function ChipMulti({
           <button
             key={o.value}
             type="button"
-            role="checkbox"
-            aria-checked={on}
+            aria-pressed={on}
             className={`chip${on ? ' selected' : ''}`}
             onClick={() => onToggle(o.value)}
           >
