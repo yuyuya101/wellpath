@@ -417,7 +417,7 @@ function AiCoach({ sessionId }: { sessionId: string }) {
         </div>
       )}
 
-      {phase === 'done' && (
+      {phase === 'done' && source === 'local-llm' && (
         <>
           <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 10 }}>
             {tips.map((t, i) => (
@@ -425,11 +425,7 @@ function AiCoach({ sessionId }: { sessionId: string }) {
             ))}
           </ul>
           <p style={{ fontSize: 12, color: 'var(--faint)', margin: '12px 0 0', display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
-            <span>
-              {source === 'local-llm'
-                ? `Generated locally by ${model ?? 'your model'} (Ollama)`
-                : 'Local model offline — showing built-in deterministic guidance.'}
-            </span>
+            <span>Generated locally by {model ?? 'your model'} (Ollama) — your data never leaves this machine.</span>
             <button
               onClick={load}
               style={{ border: 0, background: 'none', color: 'var(--accent)', fontWeight: 700, cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap' }}
@@ -438,6 +434,19 @@ function AiCoach({ sessionId }: { sessionId: string }) {
             </button>
           </p>
         </>
+      )}
+
+      {phase === 'done' && source === 'rule-fallback' && (
+        <div>
+          <p className="onb-sub" style={{ marginTop: 0, lineHeight: 1.6 }}>
+            The AI coach writes its advice with <strong>your own local DeepSeek model</strong> and never
+            sends your data to a cloud AI. This hosted preview cannot reach your computer, so your
+            deterministic plan is shown in the section above. Run <code>ollama serve</code> locally
+            (model <code>deepseek-r1:1.5b</code>) and press Regenerate — or set{' '}
+            <code>OLLAMA_BASE_URL</code> — to see model-written advice here.
+          </p>
+          <button className="btn btn-ghost" onClick={load}>Regenerate</button>
+        </div>
       )}
     </div>
   );

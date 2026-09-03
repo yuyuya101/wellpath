@@ -455,6 +455,7 @@ h1 {
   display: block;
   margin: 0 auto 26px;
   border: 1px solid var(--line);
+  background: var(--accent-soft);
 }
 .section-art {
   width: 100%;
@@ -465,6 +466,7 @@ h1 {
   display: block;
   margin: 0 auto 22px;
   border: 1px solid var(--line);
+  background: var(--accent-soft);
 }
 .goal-art {
   width: 56px;
