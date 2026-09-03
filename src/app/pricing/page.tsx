@@ -26,6 +26,14 @@ export default function PricingPage() {
         </Link>
       </nav>
 
+      <img
+        className="section-art"
+        src="/illustrations/premium-unlock.png"
+        alt="An opened lock and key beside an analytics card, symbolising unlocking the premium plan"
+        width={1600}
+        height={900}
+      />
+
       <div style={{ textAlign: 'center', marginBottom: 28 }}>
         <span className="badge">WellPath Premium</span>
         <h1 style={{ marginBottom: 10 }}>Know exactly what to eat, every day.</h1>
@@ -60,9 +68,10 @@ export default function PricingPage() {
         <span className="lane-tag">How upgrade works</span>
         <p style={{ margin: 0 }}>
           1. Start the assessment and answer the guided questions.&nbsp; 2. On your result page choose
-          <strong> Unlock now</strong>.&nbsp; 3. The simulated <code>/pay</code> callback flips your
-          subscription to active and the same result page instantly expands from the masked summary to
-          the full plan — no real card is charged.
+          <strong> Upgrade to Premium</strong> and review the plan.&nbsp; 3. Complete the demo checkout
+          (card details never leave your browser); the simulated <code>/pay</code> callback flips your
+          subscription to active and the result page instantly expands from the masked summary to the
+          full plan — no real card is charged.
         </p>
         <StartButton label="Start assessment, then unlock" variant="accent" />
       </div>

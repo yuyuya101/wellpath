@@ -2,9 +2,9 @@ import Link from 'next/link';
 import { StartButton } from '@/components/StartButton';
 
 const GOALS = [
-  { icon: '↓', title: 'Lose weight', desc: 'A safe, paced calorie deficit' },
-  { icon: '＝', title: 'Maintain & get fit', desc: 'Hold weight, improve composition' },
-  { icon: '↑', title: 'Gain muscle', desc: 'A controlled lean surplus' },
+  { art: '/illustrations/goal-lose.png', alt: 'Illustration of a light jog and a balanced plate for weight loss', title: 'Lose weight', desc: 'A safe, paced calorie deficit' },
+  { art: '/illustrations/goal-maintain.png', alt: 'Illustration of a balanced yoga pose for maintaining fitness', title: 'Maintain & get fit', desc: 'Hold weight, improve composition' },
+  { art: '/illustrations/goal-gain.png', alt: 'Illustration of strength training and a high-protein meal for muscle gain', title: 'Gain muscle', desc: 'A controlled lean surplus' },
 ];
 
 const COMPARE = [
@@ -16,7 +16,14 @@ const COMPARE = [
 
 export default function HomePage() {
   return (
-    <main className="container" style={{ textAlign: 'center', paddingTop: 56, paddingBottom: 64 }}>
+    <main className="container" style={{ textAlign: 'center', paddingTop: 48, paddingBottom: 64 }}>
+      <img
+        className="hero-art"
+        src="/illustrations/hero-wellness.png"
+        alt="A calm, balanced wellness scene with healthy food and a gentle upward path"
+        width={1600}
+        height={900}
+      />
       <span className="badge">WellPath · science-based</span>
       <h1>A plan built around your goal.</h1>
       <p style={{ color: 'var(--muted)', lineHeight: 1.65, fontSize: 16.5, maxWidth: 560, margin: '0 auto 26px' }}>
@@ -27,9 +34,7 @@ export default function HomePage() {
       <div className="opt-grid" style={{ textAlign: 'left', marginBottom: 30 }}>
         {GOALS.map((g) => (
           <div key={g.title} className="card" style={{ margin: 0, display: 'flex', gap: 12, alignItems: 'center' }}>
-            <span className="opt-icon" aria-hidden style={{ background: 'var(--accent-soft)', color: 'var(--accent-ink)', fontWeight: 800 }}>
-              {g.icon}
-            </span>
+            <img className="goal-art" src={g.art} alt={g.alt} width={120} height={120} />
             <span>
               <span style={{ display: 'block', fontWeight: 700, fontSize: 15.5 }}>{g.title}</span>
               <span style={{ display: 'block', color: 'var(--muted)', fontSize: 13, marginTop: 2 }}>{g.desc}</span>

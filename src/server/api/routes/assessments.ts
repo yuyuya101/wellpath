@@ -12,6 +12,7 @@ import {
   upsertStep,
 } from '@/server/application/assessmentService';
 import { getResultView, submitAssessment } from '@/server/application/resultService';
+import { getAiInsights } from '@/server/application/insightService';
 import { clientSubject, consume } from '@/server/application/rateLimitService';
 import { assessmentSession } from '@/server/infrastructure/db/schema';
 import { eq } from 'drizzle-orm';
@@ -161,6 +162,16 @@ export function assessmentsRoutes() {
     const token = getCookie(c, ACCESS_COOKIE);
     await assertAccess(c.var.db, id, token);
     const view = await getResultView(c.var.db, id);
+    return c.json({ sessionId: id, ...view }, 200);
+  });
+
+  // 会员专属 AI 教练洞察（本地 Ollama/DeepSeek；模型不可达时服务端回退规则建议）
+  r.post('/assessments/:id/insights', async (c) => {
+    const id = parseId(c.req.param('id'));
+    await getSession(c.var.db, id);
+    const token = getCookie(c, ACCESS_COOKIE);
+    await assertAccess(c.var.db, id, token);
+    const view = await getAiInsights(c.var.db, id);
     return c.json({ sessionId: id, ...view }, 200);
   });
 

@@ -21,7 +21,7 @@ RFC 9457 errors, automated tests at three levels and CI/CD on free tiers.
 | ORM | Drizzle ORM | SQL-transparent, typed migrations |
 | DB (prod) | PostgreSQL on Neon | Free, serverless Postgres |
 | DB (test) | PGlite (WASM) | Zero-install isolated DB per test |
-| Tests | Vitest (unit/integration) + Playwright (e2e) | 58 automated checks + dual-viewport smoke |
+| Tests | Vitest (unit/integration) + Playwright (e2e) | 61 automated checks + dual-viewport smoke |
 | Deploy | Netlify (OpenNext runtime) + Neon Postgres | $0 tier, no credit card, git-push deploys |
 
 ## Architecture
@@ -61,9 +61,23 @@ docs/                       ADRs, OpenAPI, deployment & acceptance docs
   13-screen wizard; the result page shows the free summary plus a `lockedFields` list.
 - **Premium lane** (landing, highlighted CTA → `/pricing`): an exact free-vs-Premium comparison
   page states which fields are masked, explains the simulated `/pay` flow and starts the same
-  wizard. On the result page **Unlock now (simulated)** calls `/pay`, flips the server-side
-  entitlement to active (30 days) and the same page expands from the masked summary to the full
-  plan without a reload. A "Compare free vs Premium" link on the result page routes back to `/pricing`.
+  wizard. On the result page **Upgrade to Premium** opens a three-step simulated checkout modal
+  (plan summary -> card/PayPal form -> success). Card details stay entirely in component state and
+  are **never sent to the server**; the only authorizing call is the idempotent `POST /api/pay`,
+  which flips the server-side entitlement to active (30 days). The same page then expands from the
+  masked summary to the full plan without a reload and reveals the member-only **AI health coach**.
+  A "Compare free vs Premium" link on the result page routes back to `/pricing`.
+
+## Premium AI coach (local DeepSeek via Ollama)
+The full result page calls `POST /api/assessments/{id}/insights`, a **premium-only** endpoint
+(non-members get `402 PAYMENT_REQUIRED`). It never recomputes health numbers: the deterministic
+domain result is already authoritative. It builds a prompt from those computed values and asks a
+**local** Ollama model (default `deepseek-r1:1.5b` at `http://127.0.0.1:11434`) for natural-language
+tips, then returns `{ source: "local-llm", tips }`. When no local model is reachable (e.g. the
+deployed host) it transparently falls back to the deterministic rule-based recommendations and
+returns `source: "rule-fallback"`, so the feature can never hard-fail the result page. Override with
+`OLLAMA_BASE_URL` / `OLLAMA_MODEL`. Run locally: install Ollama, `ollama pull deepseek-r1:1.5b`,
+keep `ollama serve` running, then `pnpm dev`.
 
 ## Commands
 
@@ -73,7 +87,7 @@ cp .env.example .env            # see docs/DEPLOYMENT.md; tests need NO .env DAT
 pnpm dev                        # local dev
 pnpm typecheck                  # tsc --noEmit (strict)
 pnpm lint                       # eslint
-pnpm test                       # Vitest: 58 unit/integration tests (PGlite)
+pnpm test                       # Vitest: 61 unit/integration tests (PGlite)
 pnpm build                      # production build
 pnpm test:e2e                   # Playwright dual-viewport smoke (run after build; needs DATABASE_URL)
 pnpm db:migrate                 # apply SQL migration to DATABASE_URL
@@ -92,7 +106,8 @@ pnpm verify                     # typecheck + lint + test + build
 | API integration | Vitest | 13 | session create/resume, cookie access, step optimistic lock, partial-draft acceptance vs empty-enum/typed-wrong rejection, validation/problem+json |
 | Business flow | Vitest | 16 | atomic submit/rollback, free-vs-full DTO gating incl. lockedFields/upgrade CTA, premium-expiry falls back to free, gain/maintain e2e + BMI25 ceiling, recovery single-use & expiry, idempotency, double-click, simulate-fail, rate limit, recompute, domain-rule→422 regression |
 | E2E | Playwright | 1 spec × 2 viewports | full funnel in real Chromium on desktop + iPhone 12 viewport |
-| **Total** | | **58 + 2 e2e** | all green |
+| Premium AI insights | Vitest | 3 | non-member -> 402 boundary, local-model unreachable -> rule-fallback (never hard-fails), local-model success -> parsed local-llm tips (fetch mocked, no real model needed in CI) |
+| **Total** | | **61 + 2 e2e** | all green |
 
 ### Coverage scope & deliberate gaps
 **Why these scenarios** — they map 1:1 to the challenge's riskiest invariants: deterministic
@@ -107,9 +122,10 @@ payment idempotency/double-click, single-use recovery, and DB rate limiting.
 
 ## API contract
 See [`docs/openapi.json`](docs/openapi.json) (OpenAPI 3.1). All errors are
-`application/problem+json` with one of eight stable codes:
+`application/problem+json` with one of nine stable codes:
 `INVALID_REQUEST, RECOVERY_INVALID, SESSION_NOT_FOUND, STEP_CONFLICT,
-PAYMENT_IDEMPOTENT_MISMATCH, VALIDATION_FAILED, RATE_LIMITED, INTERNAL_ERROR`.
+PAYMENT_IDEMPOTENT_MISMATCH, PAYMENT_REQUIRED, VALIDATION_FAILED, RATE_LIMITED, INTERNAL_ERROR`.
+The premium-only AI coach endpoint returns `402 PAYMENT_REQUIRED` for non-members.
 
 ## Data model
 Nine Postgres tables centered on the anonymous assessment session, with an
@@ -163,6 +179,9 @@ curl -s -b jar.txt "$BASE/api/assessments/$SID/result"
 curl -s -c jar2.txt -H 'Content-Type: application/json' -X POST "$BASE/api/recovery/redeem" \
   -d '{"recoveryCode":"<code from step 5>"}'
 curl -s -b jar2.txt "$BASE/api/assessments/$SID/result"   # full again; a 2nd redeem -> 401
+
+# 8) premium-only AI coach: local DeepSeek/Ollama tips, or rule-fallback when no local model
+curl -s -b jar.txt -X POST "$BASE/api/assessments/$SID/insights"   # non-member cookie -> 402
 ```
 
 > Non-production failure branch: add `"simulate":"fail"` to the `/pay` body to exercise

@@ -58,6 +58,12 @@ export const api = {
 
   result: (id: string) => request<Record<string, unknown>>(`/api/assessments/${id}/result`),
 
+  insights: (id: string) =>
+    request<{ source: 'local-llm' | 'rule-fallback'; model?: string; tips: string[] }>(
+      `/api/assessments/${id}/insights`,
+      { method: 'POST' },
+    ),
+
   pay: (payload: { sessionId: string; idempotencyKey: string; productCode: string; simulate?: 'fail' }) =>
     request<{ status: string; replayed: boolean; recoveryCode: string | null; premiumExpiresAt: string | null }>(
       '/api/pay',

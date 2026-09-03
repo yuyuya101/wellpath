@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ApiError, api, uuidv4 } from '@/lib/api-client';
+import { CheckoutModal } from '@/components/CheckoutModal';
 
 type Direction = 'deficit' | 'maintenance' | 'surplus';
 
@@ -99,6 +100,7 @@ export function ResultView({ sessionId }: { sessionId: string }) {
   const [recoveryCode, setRecoveryCode] = useState<string | null>(null);
   const [paying, setPaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showCheckout, setShowCheckout] = useState(false);
 
   const refresh = useCallback(async () => {
     const r = (await api.result(sessionId)) as unknown as ResultResp;
@@ -109,7 +111,7 @@ export function ResultView({ sessionId }: { sessionId: string }) {
     refresh().catch((e) => setError(e instanceof Error ? e.message : 'load failed'));
   }, [refresh]);
 
-  async function checkout(simulateFail?: boolean) {
+  async function checkout(simulateFail?: boolean): Promise<boolean> {
     setPaying(true);
     setError(null);
     try {
@@ -121,12 +123,14 @@ export function ResultView({ sessionId }: { sessionId: string }) {
       });
       if (r.status === 'failed') {
         setError('Payment failed (simulated). Your card was not charged. You can retry.');
-        return;
+        return false;
       }
       if (r.recoveryCode) setRecoveryCode(r.recoveryCode);
       await refresh();
+      return true;
     } catch (e) {
       setError(e instanceof ApiError ? e.problem?.detail ?? e.message : 'checkout failed');
+      return false;
     } finally {
       setPaying(false);
     }
@@ -144,6 +148,15 @@ export function ResultView({ sessionId }: { sessionId: string }) {
         </Link>
       </p>
 
+      <img
+        className="section-art"
+        style={{ maxWidth: 460, marginBottom: 18 }}
+        src="/illustrations/plan-path.png"
+        alt="A winding path over soft hills leading to a flag, illustrating your step-by-step plan"
+        width={1600}
+        height={900}
+      />
+
       {data.access === 'protected' && (
         <section className="card">
           <h2>We recommend professional guidance</h2>
@@ -152,11 +165,20 @@ export function ResultView({ sessionId }: { sessionId: string }) {
       )}
 
       {data.access === 'free' && data.freeSummary && (
-        <FreeBlock summary={data.freeSummary} lockedFields={data.lockedFields ?? []} upgradeMessage={data.upgrade?.message} paying={paying} onPay={() => checkout()} onFail={() => checkout(true)} />
+        <FreeBlock summary={data.freeSummary} lockedFields={data.lockedFields ?? []} upgradeMessage={data.upgrade?.message} paying={paying} onUpgrade={() => setShowCheckout(true)} onFail={() => checkout(true)} />
       )}
+
+      <CheckoutModal
+        open={showCheckout}
+        paying={paying}
+        error={error}
+        onPay={() => checkout()}
+        onClose={() => setShowCheckout(false)}
+      />
 
       {data.access === 'full' && data.payload && (
         <FullBlock
+          sessionId={sessionId}
           result={data.payload.result}
           profile={data.payload.profile}
           recommendations={data.payload.recommendations ?? []}
@@ -187,14 +209,14 @@ function FreeBlock({
   lockedFields,
   upgradeMessage,
   paying,
-  onPay,
+  onUpgrade,
   onFail,
 }: {
   summary: FreeSummary;
   lockedFields: LockedField[];
   upgradeMessage?: string;
   paying: boolean;
-  onPay: () => void;
+  onUpgrade: () => void;
   onFail: () => void;
 }) {
   const dir: Direction = summary.energyDirection ?? 'deficit';
@@ -234,8 +256,8 @@ function FreeBlock({
         <p style={{ color: 'var(--muted)', lineHeight: 1.6, marginTop: 0 }}>
           {upgradeMessage ?? 'Upgrade to unlock your full plan.'}
         </p>
-        <button onClick={onPay} disabled={paying} className="btn btn-accent" style={{ width: '100%' }}>
-          {paying ? 'Processing…' : 'Unlock now (simulated)'}
+        <button onClick={onUpgrade} disabled={paying} className="btn btn-accent" style={{ width: '100%' }}>
+          {paying ? 'Processing…' : 'Upgrade to Premium'}
         </button>
         <Link
           href="/pricing"
@@ -255,11 +277,13 @@ function FreeBlock({
 
 /* ---------------- premium (full) ---------------- */
 function FullBlock({
+  sessionId,
   result,
   profile,
   recommendations,
   expiresAt,
 }: {
+  sessionId: string;
   result: FullResult;
   profile?: ProfileLite;
   recommendations: string[];
@@ -327,6 +351,8 @@ function FullBlock({
         </div>
       )}
 
+      <AiCoach sessionId={sessionId} />
+
       {profileRows.length > 0 && (
         <div className="card">
           <h2>Your profile</h2>
@@ -342,5 +368,77 @@ function FullBlock({
         </p>
       )}
     </section>
+  );
+}
+
+/* ---------------- premium-only local-LLM AI coach ---------------- */
+function AiCoach({ sessionId }: { sessionId: string }) {
+  const [phase, setPhase] = useState<'loading' | 'done' | 'error'>('loading');
+  const [tips, setTips] = useState<string[]>([]);
+  const [source, setSource] = useState<'local-llm' | 'rule-fallback' | null>(null);
+  const [model, setModel] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setPhase('loading');
+    try {
+      const r = await api.insights(sessionId);
+      setTips(r.tips);
+      setSource(r.source);
+      setModel(r.model ?? null);
+      setPhase('done');
+    } catch {
+      setPhase('error');
+    }
+  }, [sessionId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  return (
+    <div className="card" style={{ border: '1.5px solid var(--accent)' }}>
+      <h2 style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <span>AI health coach</span>
+        <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.4px', color: 'var(--accent)', background: 'var(--accent-soft)', borderRadius: 99, padding: '3px 10px' }}>
+          PREMIUM
+        </span>
+      </h2>
+
+      {phase === 'loading' && (
+        <p className="onb-sub" style={{ marginBottom: 0 }}>
+          Generating personalised advice with your local DeepSeek model… the first response can take about 10 seconds.
+        </p>
+      )}
+
+      {phase === 'error' && (
+        <div>
+          <p className="note danger" style={{ marginTop: 0 }}>Could not generate AI advice right now.</p>
+          <button className="btn btn-ghost" onClick={load}>Retry</button>
+        </div>
+      )}
+
+      {phase === 'done' && (
+        <>
+          <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {tips.map((t, i) => (
+              <li key={i} style={{ color: 'var(--text)', fontSize: 14.5, lineHeight: 1.55 }}>{t}</li>
+            ))}
+          </ul>
+          <p style={{ fontSize: 12, color: 'var(--faint)', margin: '12px 0 0', display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+            <span>
+              {source === 'local-llm'
+                ? `Generated locally by ${model ?? 'your model'} (Ollama)`
+                : 'Local model offline — showing built-in deterministic guidance.'}
+            </span>
+            <button
+              onClick={load}
+              style={{ border: 0, background: 'none', color: 'var(--accent)', fontWeight: 700, cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap' }}
+            >
+              Regenerate
+            </button>
+          </p>
+        </>
+      )}
+    </div>
   );
 }

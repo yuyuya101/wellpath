@@ -10,6 +10,7 @@ export const ERROR_CODES = {
   SESSION_NOT_FOUND: { status: 404, title: 'Assessment session not found' },
   STEP_CONFLICT: { status: 409, title: 'Step revision conflict' },
   PAYMENT_IDEMPOTENT_MISMATCH: { status: 409, title: 'Idempotency key reused with different payload' },
+  PAYMENT_REQUIRED: { status: 402, title: 'Premium subscription required' },
   VALIDATION_FAILED: { status: 422, title: 'Validation failed' },
   RATE_LIMITED: { status: 429, title: 'Rate limit exceeded' },
   INTERNAL_ERROR: { status: 500, title: 'Internal server error' },
