@@ -1,5 +1,7 @@
 # WellPath — Personalized Wellness Assessment Funnel
 
+[![CI](https://github.com/yuyuya101/wellpath/actions/workflows/ci.yml/badge.svg)](https://github.com/yuyuya101/wellpath/actions/workflows/ci.yml)
+
 A production-style full-stack implementation of a health-assessment subscription
 funnel: a guided, multi-screen questionnaire (3 sections, persisted as 4 resumable
 steps) supports **lose / maintain / gain** goals and produces a **free summary**, and a **simulated,
@@ -19,7 +21,6 @@ RFC 9457 errors, automated tests at three levels and CI/CD on free tiers.
 | ORM | Drizzle ORM | SQL-transparent, typed migrations |
 | DB (prod) | PostgreSQL on Neon | Free, serverless Postgres |
 | DB (test) | PGlite (WASM) | Zero-install isolated DB per test |
-| Forms | react-hook-form | Uncontrolled, minimal re-renders |
 | Tests | Vitest (unit/integration) + Playwright (e2e) | 58 automated checks + dual-viewport smoke |
 | Deploy | Netlify (OpenNext runtime) + Neon Postgres | $0 tier, no credit card, git-push deploys |
 
@@ -43,7 +44,7 @@ tests/                      Vitest: domain / schema / api / end-to-end flow
 e2e/                        Playwright single funnel smoke (desktop + mobile)
 drizzle/                    SQL migration (9 tables)
 docs/                       ADRs, OpenAPI, deployment & acceptance docs
-.github/workflows/ci.yml    quality + real-PG migration + chromium e2e
+.github/workflows/ci.yml    CI on every push/PR: verify job (typecheck/lint/Vitest-PGlite/build) + migration job (Drizzle SQL applied to a real PostgreSQL 16 service)
 ```
 
 ### Key guarantees (each pinned by a test)
@@ -54,6 +55,15 @@ docs/                       ADRs, OpenAPI, deployment & acceptance docs
 - **Single-use recovery** — only an HMAC digest is stored; constant-time compare, conditional `UPDATE ... WHERE used=false` closes the replay race; 7-day TTL.
 - **DB fixed-window rate limit** — counters live in Postgres (multi-instance safe), 10 create / 5 pay per minute → 429.
 - **Edit & recompute (T16)** — after submission a user can edit answers and recompute; entitlement is preserved; a plain duplicate submit stays a no-op.
+
+## Product surface — two explicit entry paths
+- **Free lane** (landing, primary CTA): creates an anonymous session and starts the guided
+  13-screen wizard; the result page shows the free summary plus a `lockedFields` list.
+- **Premium lane** (landing, highlighted CTA → `/pricing`): an exact free-vs-Premium comparison
+  page states which fields are masked, explains the simulated `/pay` flow and starts the same
+  wizard. On the result page **Unlock now (simulated)** calls `/pay`, flips the server-side
+  entitlement to active (30 days) and the same page expands from the masked summary to the full
+  plan without a reload. A "Compare free vs Premium" link on the result page routes back to `/pricing`.
 
 ## Commands
 

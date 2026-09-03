@@ -237,6 +237,12 @@ function FreeBlock({
         <button onClick={onPay} disabled={paying} className="btn btn-accent" style={{ width: '100%' }}>
           {paying ? 'Processing…' : 'Unlock now (simulated)'}
         </button>
+        <Link
+          href="/pricing"
+          style={{ display: 'block', textAlign: 'center', marginTop: 12, fontSize: 13.5, fontWeight: 600, color: 'var(--accent-ink)' }}
+        >
+          Compare free vs Premium
+        </Link>
         {process.env.NODE_ENV !== 'production' && (
           <button onClick={onFail} className="btn btn-ghost" style={{ width: '100%', marginTop: 10 }}>
             Simulate failed payment
