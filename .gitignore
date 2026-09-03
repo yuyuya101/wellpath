@@ -1,0 +1,33 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+
+# next.js
+/.next/
+/out/
+next-env.d.ts
+
+# production
+/build
+dist
+
+# testing
+/coverage
+/test-results
+/playwright-report
+
+# env —— 绝不提交真实密钥
+.env
+.env.local
+.env*.local
+
+# misc
+.DS_Store
+*.pem
+.idea/
+.vscode/*
+!.vscode/extensions.json
+npm-debug.log*
+pnpm-debug.log*
+*.tsbuildinfo
