@@ -4,7 +4,15 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { api } from '@/lib/api-client';
 
-export function StartButton() {
+export function StartButton({
+  label = 'Start free assessment',
+  variant = 'primary',
+  fullWidth = true,
+}: {
+  label?: string;
+  variant?: 'primary' | 'accent';
+  fullWidth?: boolean;
+}) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -22,14 +30,14 @@ export function StartButton() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, width: '100%' }}>
       <button
         onClick={start}
         disabled={loading}
-        className="btn btn-primary"
-        style={{ maxWidth: 340 }}
+        className={`btn ${variant === 'accent' ? 'btn-accent' : 'btn-primary'}`}
+        style={fullWidth ? { maxWidth: 360, width: '100%' } : { maxWidth: 360 }}
       >
-        {loading ? 'Starting…' : 'Start free assessment'}
+        {loading ? 'Starting…' : label}
       </button>
       {error && (
         <p role="alert" className="note danger" style={{ margin: 0 }}>

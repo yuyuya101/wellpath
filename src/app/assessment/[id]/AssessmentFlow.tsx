@@ -30,10 +30,17 @@ const FIELD_LIMITS: Record<string, [number, number]> = {
 
 function errMessage(e: unknown): string {
   if (e instanceof ApiError) {
+    // 技术性冲突不要把 currentRevision 之类的机器字段直接抛给用户
+    if (e.problem?.code === 'STEP_CONFLICT') {
+      return 'Your answers were just saved in another request. Please press Continue again.';
+    }
+    if (e.problem?.code === 'RATE_LIMITED') {
+      return 'You are going a little fast — please wait a few seconds and try again.';
+    }
     const fe = e.problem?.fieldErrors;
     if (fe) {
       const first = Object.values(fe)[0];
-      if (first && first.length) return first[0] ?? 'Invalid value';
+      if (Array.isArray(first) && first.length && typeof first[0] === 'string') return first[0];
     }
     return e.problem?.detail ?? e.message;
   }
@@ -212,10 +219,13 @@ export default function AssessmentFlow({
         };
         setForm(snapshot);
       }
-      await persist(screen.step, snapshot);
+      // 关键：最后一屏不在此单独持久化当前步——finish() 会按最新 revision
+      // 统一持久化全部四步；若先写一次再让 finish 重写当前步，会因乐观锁
+      // 版本过期触发 409 STEP_CONFLICT（前端曾把回带的 currentRevision 误显示成报错）。
       if (isLast) {
         await finish(snapshot);
       } else {
+        await persist(screen.step, snapshot);
         setFieldError(null);
         setIdx((i) => i + 1);
       }
