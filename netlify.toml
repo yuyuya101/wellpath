@@ -1,0 +1,13 @@
+# Netlify 构建配置（免费层，免信用卡）
+# Netlify 检测到 Next.js 后自动使用官方 OpenNext runtime，支持 App Router / Route Handlers / SSR。
+
+[build]
+  command = "pnpm install --frozen-lockfile && pnpm build"
+
+[build.environment]
+  NODE_VERSION = "22"
+  PNPM_VERSION = "11.25.0"
+
+# 生产环境变量在 Netlify 站点 UI: Site configuration -> Environment variables 配置
+# DATABASE_URL / RECOVERY_HMAC_KEY / RATE_LIMIT_SESSION_RPM / RATE_LIMIT_PAY_RPM
+# 数据库九表已迁移，构建阶段不需要再跑 db:migrate。
