@@ -14,6 +14,7 @@
 - 演示地址：https://wellpa.netlify.app
 - 健康检查：https://wellpa.netlify.app/api/health
 - 代码仓库：https://github.com/yuyuya101/wellpath（如要求私有，可开放指定账号只读权限）
+- 访问备注：站点托管于境外免费平台 Netlify，国内个别桌面宽带可能因 DNS 策略首次打开偏慢或失败，切换手机热点/移动网络或使用常规网络加速器即可正常访问；也可直接按下方「本地运行」clone 启动，效果与线上一致。
 
 **二、本地运行**
 ```bash
