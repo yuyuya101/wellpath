@@ -1,326 +1,398 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ApiError, api, type StepSaveResp } from '@/lib/api-client';
-import { fromCm, fromKg, toCm, toKg, type UnitSystem } from '@/lib/units';
+import { api, ApiError } from '@/lib/api-client';
+import {
+  ActionBar,
+  ChipMulti,
+  NumberField,
+  OnbTopBar,
+  OptionCard,
+  OptionGrid,
+  OptionStack,
+  SectionProgress,
+} from '@/components/onboarding/fields';
+import {
+  emptyForm,
+  visibleScreens,
+  type FormState,
+  type Screen,
+  type StepKey,
+} from './flow-config';
 
-interface FormValues {
-  sex: 'male' | 'female' | '';
-  ageYears: number | undefined;
-  heightCm: number | undefined;
-  weightKg: number | undefined;
-  targetWeightKg: number | undefined;
-  activity: 'sedentary' | 'light' | 'moderate' | 'active' | 'athlete' | '';
-  specialCondition: 'none' | 'pregnancy' | 'breastfeeding';
-}
-
-const STEPS = [
-  { key: 'basics', label: 'Basics' },
-  { key: 'goal', label: 'Goal' },
-  { key: 'activity', label: 'Activity' },
-  { key: 'condition', label: 'Review' },
-] as const;
-
-const ACTIVITIES: Array<{ value: FormValues['activity']; label: string; hint: string }> = [
-  { value: 'sedentary', label: 'Sedentary', hint: 'Little or no exercise' },
-  { value: 'light', label: 'Light', hint: 'Exercise 1–3 days/week' },
-  { value: 'moderate', label: 'Moderate', hint: 'Exercise 3–5 days/week' },
-  { value: 'active', label: 'Active', hint: 'Exercise 6–7 days/week' },
-  { value: 'athlete', label: 'Athlete', hint: 'Physical job / 2x training daily' },
-];
-
-const DEFAULTS: FormValues = {
-  sex: '',
-  ageYears: undefined,
-  heightCm: undefined,
-  weightKg: undefined,
-  targetWeightKg: undefined,
-  activity: '',
-  specialCondition: 'none',
+const FIELD_LIMITS: Record<string, [number, number]> = {
+  ageYears: [18, 100],
+  heightCm: [100, 250],
+  weightKg: [30, 300],
+  targetWeightKg: [30, 300],
 };
 
-export function AssessmentFlow({ sessionId, editMode = false }: { sessionId: string; editMode?: boolean }) {
+function errMessage(e: unknown): string {
+  if (e instanceof ApiError) {
+    const fe = e.problem?.fieldErrors;
+    if (fe) {
+      const first = Object.values(fe)[0];
+      if (first && first.length) return first[0] ?? 'Invalid value';
+    }
+    return e.problem?.detail ?? e.message;
+  }
+  return e instanceof Error ? e.message : 'Something went wrong';
+}
+
+/** 清洗为可落库的 step answer：去掉空串/undefined，保留合法 number、数组与 null */
+function cleanStep(step: FormState[StepKey]): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(step)) {
+    if (v === undefined || v === '') continue;
+    out[k] = v;
+  }
+  return out;
+}
+
+function finiteNumber(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v);
+}
+
+/** 按 step + 字段名读取（屏幕配置的字段键是字符串，统一在此收窄类型） */
+function readField(f: FormState, step: StepKey, field: string | undefined): unknown {
+  if (!field) return undefined;
+  return (f[step] as unknown as Record<string, unknown>)[field];
+}
+
+export default function AssessmentFlow({
+  sessionId,
+  editMode = false,
+}: {
+  sessionId: string;
+  editMode?: boolean;
+}) {
   const router = useRouter();
-  const [stepIndex, setStepIndex] = useState(0);
-  const [system, setSystem] = useState<UnitSystem>('metric');
-  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const [revisions, setRevisions] = useState<Record<string, number>>({});
-  const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
-  const [fatal, setFatal] = useState<string | null>(null);
+  const [form, setForm] = useState<FormState>(emptyForm);
+  const [idx, setIdx] = useState(0);
+  const [revisions, setRevisions] = useState<Record<string, number | undefined>>({});
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [fieldError, setFieldError] = useState<string | null>(null);
+  const [banner, setBanner] = useState<string | null>(null);
+  const [savedLabel, setSavedLabel] = useState<'idle' | 'saving' | 'saved'>('idle');
 
-  const { register, handleSubmit, watch, reset, setValue, trigger, setError, clearErrors, formState } = useForm<FormValues>({
-    defaultValues: DEFAULTS,
-    // 分步条件渲染会卸载非当前步字段，显式保留已填值，避免跨步丢失
-    shouldUnregister: false,
-  });
-  const values = watch();
+  const screens = useMemo(() => visibleScreens(form), [form]);
+  const screen: Screen = screens[Math.min(idx, screens.length - 1)]!;
 
-  // 恢复已有进度
+  /* ---------- restore ---------- */
   useEffect(() => {
-    api
-      .getSession(sessionId)
-      .then((s) => {
-        if (s.status === 'submitted' && !editMode) {
-          router.replace(`/assessment/${sessionId}/result`);
-          return;
-        }
-        const merged = { ...DEFAULTS } as FormValues;
-        const rev: Record<string, number> = {};
+    let cancelled = false;
+    (async () => {
+      try {
+        const s = await api.getSession(sessionId);
+        const f = emptyForm();
+        const rev: Record<string, number | undefined> = {};
         for (const st of s.steps) {
-          Object.assign(merged, st.answer);
+          Object.assign(f[st.stepKey as StepKey] as object, st.answer);
           rev[st.stepKey] = st.revision;
         }
-        if (merged.specialCondition === (null as unknown as 'none')) merged.specialCondition = 'none';
-        reset(merged);
+        if (cancelled) return;
+        setForm(f);
         setRevisions(rev);
-      })
-      .catch((e) => setFatal(e instanceof Error ? e.message : 'failed to load'));
-  }, [sessionId, reset, router, editMode]);
-
-  const stepKey = STEPS[stepIndex]!.key;
-  const progress = useMemo(() => ((stepIndex + 1) / STEPS.length) * 100, [stepIndex]);
-
-  function setRevision(key: string, rev: number) {
-    setRevisions((p) => ({ ...p, [key]: rev }));
-  }
-
-  // 保存单步；遇 409 自动 rebase（拉当前 revision）并重试一次
-  async function persist(key: string, answer: Record<string, unknown>): Promise<StepSaveResp> {
-    setSaveState('saving');
-    try {
-      const r = await api.saveStep(sessionId, key, answer, revisions[key]);
-      setRevision(key, r.revision);
-      setSaveState('saved');
-      return r;
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 409) {
-        const current = Number(e.problem?.fieldErrors?.currentRevision?.[0] ?? '0');
-        const r = await api.saveStep(sessionId, key, answer, current || undefined);
-        setRevision(key, r.revision);
-        setSaveState('saved');
-        return r;
+        setIdx(firstIncomplete(f));
+      } catch (e) {
+        if (!cancelled) setLoadError(errMessage(e));
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-      setSaveState('error');
-      throw e;
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId]);
+
+  const setSingle = useCallback((step: StepKey, field: string, value: unknown) => {
+    setForm((prev) => ({ ...prev, [step]: { ...prev[step], [field]: value } }));
+    setFieldError(null);
+  }, []);
+
+  const toggleMulti = useCallback((step: StepKey, field: string, value: string) => {
+    setForm((prev) => {
+      const cur = (prev[step][field as keyof typeof prev[StepKey]] as string[] | undefined) ?? [];
+      const next = cur.includes(value) ? cur.filter((v) => v !== value) : [...cur, value];
+      return { ...prev, [step]: { ...prev[step], [field]: next } };
+    });
+  }, []);
+
+  const persist = useCallback(
+    async (step: StepKey, snapshot: FormState) => {
+      setSavedLabel('saving');
+      const resp = await api.saveStep(
+        sessionId,
+        step,
+        cleanStep(snapshot[step]),
+        revisions[step],
+      );
+      setRevisions((prev) => ({ ...prev, [step]: resp.revision }));
+      setSavedLabel('saved');
+    },
+    [revisions, sessionId],
+  );
+
+  /* ---------- per-screen completeness / validation ---------- */
+  const screenComplete = useCallback(
+    (sc: Screen, f: FormState): boolean => {
+      if (!sc.required) return true;
+      if (sc.kind === 'cards' || sc.kind === 'rows') {
+        const v = readField(f, sc.step, sc.field);
+        return v !== undefined && v !== '';
+      }
+      if (sc.kind === 'number') return finiteNumber(readField(f, sc.step, sc.field));
+      if (sc.kind === 'numbers') return sc.fields!.every((fld) => finiteNumber(readField(f, sc.step, fld)));
+      return true; // chips are optional
+    },
+    [],
+  );
+
+  function validateScreen(sc: Screen, f: FormState): string | null {
+    const inRange = (fld: string, v: unknown): string | null => {
+      if (!finiteNumber(v)) return 'Please enter a number.';
+      const [lo, hi] = FIELD_LIMITS[fld] ?? [Number.NEGATIVE_INFINITY, Number.POSITIVE_INFINITY];
+      if (v < lo || v > hi) return `Please enter a value between ${lo} and ${hi}.`;
+      return null;
+    };
+    if (sc.kind === 'number') {
+      const fld = String(sc.field);
+      const v = readField(f, sc.step, sc.field);
+      const r = inRange(fld, v);
+      if (r) return r;
+      if (fld === 'targetWeightKg' && finiteNumber(v)) {
+        const cur = f.basics.weightKg;
+        if (f.goal.goal === 'lose' && finiteNumber(cur) && v >= cur)
+          return `For weight loss the target must be below your current ${cur} kg.`;
+        if (f.goal.goal === 'gain' && finiteNumber(cur) && v <= cur)
+          return `For weight gain the target must be above your current ${cur} kg.`;
+      }
+      return null;
     }
+    if (sc.kind === 'numbers') {
+      for (const fld of sc.fields!) {
+        const r = inRange(String(fld), readField(f, sc.step, fld));
+        if (r) return r;
+      }
+    }
+    return null;
   }
 
-  function answerFor(key: string, v: FormValues): Record<string, unknown> {
-    if (key === 'basics')
-      return { sex: v.sex, ageYears: v.ageYears, heightCm: v.heightCm, weightKg: v.weightKg };
-    if (key === 'goal') return { targetWeightKg: v.targetWeightKg };
-    if (key === 'activity') return { activity: v.activity };
-    return { specialCondition: v.specialCondition === 'none' ? null : v.specialCondition };
+  /* ---------- navigation ---------- */
+  const isLast = idx >= screens.length - 1;
+  const canContinue = screenComplete(screen, form);
+
+  async function finish(snapshot: FormState) {
+    // 幂等确保四个持久化步骤都已落库，再提交由 fullProfileSchema 做最终完整性裁决
+    for (const step of ['basics', 'goal', 'activity', 'condition'] as StepKey[]) {
+      await persist(step, snapshot);
+    }
+    await api.submit(sessionId, editMode);
+    router.push(`/assessment/${sessionId}/result`);
   }
 
-  async function next(v: FormValues) {
-    // 自定义按钮字段未挂 RHF 规则，trigger 会对无规则字段放行，这里显式做必选拦截
-    if (stepKey === 'basics' && v.sex === '') {
-      setError('sex', { type: 'required', message: 'Please select' });
+  async function next() {
+    const vErr = validateScreen(screen, form);
+    if (vErr) {
+      setFieldError(vErr);
       return;
     }
-    if (stepKey === 'activity' && v.activity === '') {
-      setError('activity', { type: 'required', message: 'Please select' });
-      return;
-    }
-    const valid = await trigger(
-      stepKey === 'basics'
-        ? ['sex', 'ageYears', 'heightCm', 'weightKg']
-        : stepKey === 'goal'
-          ? ['targetWeightKg']
-          : stepKey === 'activity'
-            ? ['activity']
-            : [],
-    );
-    if (!valid) return;
-    await persist(stepKey, answerFor(stepKey, v));
-    if (stepIndex < STEPS.length - 1) setStepIndex(stepIndex + 1);
-  }
-
-  async function finish(v: FormValues) {
-    setSubmitting(true);
-    setSubmitError(null);
+    setBanner(null);
+    setBusy(true);
     try {
-      await persist('condition', answerFor('condition', v));
-      await api.submit(sessionId, editMode);
-      router.push(`/assessment/${sessionId}/result`);
-    } catch (e) {
-      // 422：跨步骤业务规则（如目标体重高于当前/低于健康下限），定位回对应步骤并内联提示
-      if (e instanceof ApiError && e.status === 422 && e.problem?.fieldErrors) {
-        const fieldErrors = e.problem.fieldErrors;
-        const firstField = Object.keys(fieldErrors)[0];
-        const stepOf: Record<string, number> = {
-          sex: 0, ageYears: 0, heightCm: 0, weightKg: 0,
-          targetWeightKg: 1, activity: 2, specialCondition: 3,
+      let snapshot = form;
+      // maintain 不需要目标/节奏屏：离开 goal 屏时把目标体重自动设为当前体重
+      if (screen.id === 'goal' && form.goal.goal === 'maintain') {
+        snapshot = {
+          ...form,
+          goal: { ...form.goal, targetWeightKg: form.basics.weightKg ?? '' },
         };
-        if (firstField && stepOf[firstField] !== undefined) setStepIndex(stepOf[firstField]!);
-        const msgs = Object.values(fieldErrors).flat().filter(Boolean);
-        setSubmitError(msgs.length ? msgs.join(' ') : 'Some answers need your review.');
-      } else {
-        setFatal(e instanceof Error ? e.message : 'submit failed');
+        setForm(snapshot);
       }
-      setSubmitting(false);
+      await persist(screen.step, snapshot);
+      if (isLast) {
+        await finish(snapshot);
+      } else {
+        setFieldError(null);
+        setIdx((i) => i + 1);
+      }
+    } catch (e) {
+      setBanner(errMessage(e));
+    } finally {
+      setBusy(false);
     }
   }
 
-  if (fatal) {
+  function back() {
+    setBanner(null);
+    setFieldError(null);
+    setIdx((i) => Math.max(0, i - 1));
+  }
+
+  /* ---------- render helpers ---------- */
+  function singleValue(sc: Screen): string {
+    const v = readField(form, sc.step, sc.field);
+    if (v === undefined || v === '') return '';
+    if (v === null) return '__none'; // specialCondition: selected "None"
+    return String(v);
+  }
+
+  function renderBody(sc: Screen) {
+    if (sc.kind === 'cards' || sc.kind === 'rows') {
+      const cur = singleValue(sc);
+      const Wrapper = sc.kind === 'cards' ? OptionGrid : OptionStack;
+      return (
+        <Wrapper>
+          {sc.options!.map((o) => (
+            <OptionCard
+              key={o.value}
+              label={o.label}
+              hint={o.hint}
+              selected={cur === o.value}
+              onSelect={() => setSingle(sc.step, String(sc.field), o.value === '__none' ? null : o.value)}
+            />
+          ))}
+        </Wrapper>
+      );
+    }
+    if (sc.kind === 'chips') {
+      const values = (readField(form, sc.step, sc.multiField) as string[] | undefined)?.map(String) ?? [];
+      return (
+        <ChipMulti
+          options={sc.options!}
+          values={values}
+          onToggle={(v) => toggleMulti(sc.step, String(sc.multiField), v)}
+        />
+      );
+    }
+    if (sc.kind === 'number') {
+      const fld = String(sc.field);
+      const dynamic = targetCopy(sc, form);
+      return (
+        <NumberField
+          label={dynamic.label}
+          unit={sc.units?.[fld]}
+          value={(readField(form, sc.step, sc.field) as number | '' | undefined) ?? ''}
+          onChange={(n) => setSingle(sc.step, fld, n)}
+          error={fieldError ?? undefined}
+          hint={dynamic.hint}
+        />
+      );
+    }
+    // two numeric inputs
     return (
-      <main className="container">
-        <p role="alert" style={{ color: '#c0392b' }}>
-          {fatal}
-        </p>
-      </main>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {sc.fields!.map((fld) => (
+          <NumberField
+            key={fld}
+            label={METRIC_LABELS[fld] ?? fld}
+            unit={sc.units?.[fld]}
+            value={(readField(form, sc.step, fld) as number | '' | undefined) ?? ''}
+            onChange={(n) => setSingle(sc.step, fld, n)}
+            error={fieldError ?? undefined}
+          />
+        ))}
+      </div>
     );
   }
 
-  const inputStyle: React.CSSProperties = {
-    width: '100%',
-    padding: '10px 12px',
-    fontSize: 16,
-    border: '1px solid #d0d5dd',
-    borderRadius: 8,
-    marginTop: 6,
-  };
-  const labelStyle: React.CSSProperties = { fontSize: 14, fontWeight: 600, display: 'block', marginTop: 14 };
+  if (loading) {
+    return <p className="onb-sub" style={{ marginTop: 40 }}>Loading your assessment…</p>;
+  }
+  if (loadError) {
+    return (
+      <div className="card">
+        <h2>Unable to load this assessment</h2>
+        <p className="onb-sub">{loadError}</p>
+      </div>
+    );
+  }
 
   return (
-    <main className="container">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span className="badge">Step {stepIndex + 1}/4 · {STEPS[stepIndex]!.label}</span>
-        <button
-          type="button"
-          onClick={() => setSystem((s) => (s === 'metric' ? 'imperial' : 'metric'))}
-          style={{ border: '1px solid #d0d5dd', background: '#fff', borderRadius: 8, padding: '6px 12px', minHeight: 36 }}
-        >
-          {system === 'metric' ? 'Metric (kg/cm)' : 'Imperial (lb/in)'}
-        </button>
-      </div>
-      <div style={{ height: 6, background: '#e5e7eb', borderRadius: 99, margin: '12px 0 24px' }}>
-        <div style={{ width: `${progress}%`, height: '100%', background: 'var(--accent)', borderRadius: 99, transition: 'width .2s' }} />
-      </div>
+    <div>
+      <OnbTopBar section={screen.section} onBack={idx > 0 ? back : undefined} />
+      <SectionProgress total={screens.length} current={idx} />
 
-      <form onSubmit={handleSubmit(stepIndex === STEPS.length - 1 ? finish : next)} noValidate>
-        {submitError && (
-          <p role="alert" style={{ color: '#c0392b', background: 'rgba(192,57,43,.08)', border: '1px solid rgba(192,57,43,.25)', borderRadius: 8, padding: '10px 12px', fontSize: 14 }}>
-            {submitError}
-          </p>
-        )}
-        {stepKey === 'basics' && (
-          <section>
-            <label style={labelStyle}>Biological sex</label>
-            <div role="radiogroup" aria-label="Biological sex" style={{ display: 'flex', gap: 10, marginTop: 6 }}>
-              {(['male', 'female'] as const).map((s) => (
-                <button type="button" key={s} role="radio" aria-checked={values.sex === s}
-                  onClick={() => { setValue('sex', s, { shouldValidate: true }); clearErrors('sex'); }}
-                  style={{ flex: 1, padding: 12, borderRadius: 8, minHeight: 44,
-                    border: values.sex === s ? '2px solid var(--accent)' : '1px solid #d0d5dd',
-                    background: values.sex === s ? 'rgba(47,125,107,.08)' : '#fff', textTransform: 'capitalize' }}>
-                  {s}
-                </button>
-              ))}
-            </div>
-            {formState.errors.sex && <Err msg="Please select" />}
+      <h2 className="onb-question">{screen.title}</h2>
+      {screen.subtitle && <p className="onb-sub">{screen.subtitle}</p>}
 
-            <label style={labelStyle}>Age (years)</label>
-            <input type="number" style={inputStyle} inputMode="numeric" aria-label="Age in years"
-              {...register('ageYears', { required: true, valueAsNumber: true, min: 18, max: 100 })} />
-            {formState.errors.ageYears && <Err msg="Age must be 18–100" />}
+      <div style={{ marginTop: 8 }}>{renderBody(screen)}</div>
 
-            <label style={labelStyle}>Height ({system === 'metric' ? 'cm' : 'in'})</label>
-            <input type="number" style={inputStyle} inputMode="decimal" aria-label="Height"
-              value={fromCm(values.heightCm, system)}
-              onChange={(e) => setValue('heightCm', e.target.value === '' ? undefined : toCm(Number(e.target.value), system), { shouldValidate: true })} />
-            {formState.errors.heightCm && <Err msg="Height must be 100–250 cm" />}
+      {banner && (
+        <div className="note danger" role="alert" style={{ marginTop: 18 }}>
+          {banner}
+        </div>
+      )}
 
-            <label style={labelStyle}>Current weight ({system === 'metric' ? 'kg' : 'lb'})</label>
-            <input type="number" style={inputStyle} inputMode="decimal" aria-label="Current weight"
-              value={fromKg(values.weightKg, system)}
-              onChange={(e) => setValue('weightKg', e.target.value === '' ? undefined : toKg(Number(e.target.value), system), { shouldValidate: true })} />
-            {formState.errors.weightKg && <Err msg="Weight must be 30–300 kg" />}
-          </section>
-        )}
-
-        {stepKey === 'goal' && (
-          <section>
-            <label style={labelStyle}>Target weight ({system === 'metric' ? 'kg' : 'lb'})</label>
-            <input type="number" style={inputStyle} inputMode="decimal" aria-label="Target weight"
-              value={fromKg(values.targetWeightKg, system)}
-              onChange={(e) => setValue('targetWeightKg', e.target.value === '' ? undefined : toKg(Number(e.target.value), system), { shouldValidate: true })} />
-            {formState.errors.targetWeightKg && <Err msg="Enter a valid target weight" />}
-            <p style={{ color: 'var(--muted)', fontSize: 13, marginTop: 10 }}>
-              Target should not exceed current weight or fall below BMI 18.5.
-            </p>
-          </section>
-        )}
-
-        {stepKey === 'activity' && (
-          <section role="radiogroup" aria-label="Activity level">
-            {ACTIVITIES.map((a) => (
-              <button type="button" key={a.value} role="radio" aria-checked={values.activity === a.value}
-                onClick={() => { setValue('activity', a.value, { shouldValidate: true }); clearErrors('activity'); }}
-                style={{ display: 'block', width: '100%', textAlign: 'left', padding: 14, marginTop: 10, borderRadius: 10, minHeight: 44,
-                  border: values.activity === a.value ? '2px solid var(--accent)' : '1px solid #d0d5dd',
-                  background: values.activity === a.value ? 'rgba(47,125,107,.08)' : '#fff' }}>
-                <strong>{a.label}</strong>
-                <span style={{ color: 'var(--muted)', marginLeft: 8, fontSize: 13 }}>{a.hint}</span>
-              </button>
-            ))}
-            {formState.errors.activity && <Err msg="Please select an activity level" />}
-          </section>
-        )}
-
-        {stepKey === 'condition' && (
-          <section>
-            <label style={labelStyle}>Special conditions</label>
-            {([
-              { v: 'none', l: 'None' },
-              { v: 'pregnancy', l: 'Pregnancy' },
-              { v: 'breastfeeding', l: 'Breastfeeding' },
-            ] as const).map((o) => (
-              <label key={o.v} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '10px 0', minHeight: 44 }}>
-                <input type="radio" value={o.v} {...register('specialCondition')} />
-                {o.l}
-              </label>
-            ))}
-            <p style={{ color: 'var(--muted)', fontSize: 13 }}>
-              Pregnancy/breastfeeding users receive a safety note instead of a deficit plan.
-            </p>
-          </section>
-        )}
-
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 28, gap: 12 }}>
-          <button type="button" disabled={stepIndex === 0} onClick={() => setStepIndex(stepIndex - 1)}
-            style={{ padding: '12px 18px', borderRadius: 8, minHeight: 44, border: '1px solid #d0d5dd', background: '#fff', opacity: stepIndex === 0 ? 0.5 : 1 }}>
+      <ActionBar>
+        {idx > 0 && (
+          <button type="button" className="btn btn-ghost" onClick={back} disabled={busy}>
             Back
           </button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <SaveBadge state={saveState} />
-            <button type="submit" disabled={submitting}
-              style={{ padding: '12px 22px', borderRadius: 8, minHeight: 44, border: 0, background: 'var(--accent)', color: '#fff', fontSize: 15 }}>
-              {stepIndex === STEPS.length - 1
-                ? submitting
-                  ? 'Submitting…'
-                  : editMode
-                    ? 'Update my result'
-                    : 'See my result'
-                : 'Next'}
-            </button>
-          </div>
-        </div>
-      </form>
-    </main>
+        )}
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={next}
+          disabled={busy || !canContinue}
+        >
+          {busy ? 'Saving…' : isLast ? 'See my results' : 'Continue'}
+        </button>
+      </ActionBar>
+      <div style={{ textAlign: 'center', marginBottom: 8 }}>
+        <span className="save-state">
+          {savedLabel === 'saving' ? 'Saving progress…' : savedLabel === 'saved' ? 'Progress saved' : ''}
+        </span>
+      </div>
+    </div>
   );
 }
 
-function Err({ msg }: { msg: string }) {
-  return <p style={{ color: '#c0392b', fontSize: 13, margin: '6px 0 0' }}>{msg}</p>;
+const METRIC_LABELS: Record<string, string> = {
+  heightCm: 'Height',
+  weightKg: 'Current weight',
+};
+
+/** 目标体重屏随 goal 方向变化的文案与健康范围提示 */
+function targetCopy(sc: Screen, f: FormState): { label: string; hint?: string } {
+  if (sc.id !== 'target') return { label: 'Value' };
+  const h = f.basics.heightCm;
+  const cur = f.basics.weightKg;
+  if (f.goal.goal === 'gain') {
+    const ceiling = finiteNumber(h) ? Math.round(25 * (h / 100) ** 2 * 100) / 100 : undefined;
+    return {
+      label: 'Weight you want to reach',
+      hint:
+        finiteNumber(cur) && ceiling
+          ? `Above your current ${cur} kg. Healthy ceiling for your height is about ${ceiling} kg (BMI 25).`
+          : 'Enter a target above your current weight.',
+    };
+  }
+  return {
+    label: 'Your target weight',
+    hint: finiteNumber(cur)
+      ? `Below your current ${cur} kg. We enforce the healthy BMI 18.5 floor.`
+      : 'Enter a target below your current weight.',
+  };
 }
 
-function SaveBadge({ state }: { state: 'idle' | 'saving' | 'saved' | 'error' }) {
-  const map = { idle: '', saving: 'Saving…', saved: 'Auto-saved ✓', error: 'Save failed' } as const;
-  if (!map[state]) return null;
-  return <span style={{ fontSize: 13, color: state === 'error' ? '#c0392b' : 'var(--muted)' }}>{map[state]}</span>;
+/** 恢复时定位到第一个未完成的必填屏；全部完成则回到开头 */
+function firstIncomplete(f: FormState): number {
+  const list = visibleScreens(f);
+  for (let i = 0; i < list.length; i += 1) {
+    const sc = list[i]!;
+    if (!sc.required) continue;
+    if (sc.kind === 'cards' || sc.kind === 'rows') {
+      const v = readField(f, sc.step, sc.field);
+      if (v === undefined || v === '') return i;
+    } else if (sc.kind === 'number') {
+      if (!finiteNumber(readField(f, sc.step, sc.field))) return i;
+    } else if (sc.kind === 'numbers') {
+      if (!sc.fields!.every((fld) => finiteNumber(readField(f, sc.step, fld)))) return i;
+    }
+  }
+  return 0;
 }

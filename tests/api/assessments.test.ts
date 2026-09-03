@@ -184,19 +184,36 @@ describe('T08 分步保存与乐观锁', () => {
     expect((await check.json()).steps).toEqual([]);
   });
 
-  it('单步强校验：basics 缺字段/数字传字符串 -> 422', async () => {
+  it('单步强校验：已提供但非法（数字传字符串）-> 422 且不落库', async () => {
     const { sessionId, cookie } = await createSession();
     const res = await app.request(`/api/assessments/${sessionId}/steps/basics`, {
       method: 'PATCH',
       headers: { cookie, 'content-type': 'application/json' },
       body: JSON.stringify({
         stepKey: 'basics',
-        answer: { sex: 'male', ageYears: '28', heightCm: 175 }, // weightKg 缺失、age 为字符串
+        answer: { sex: 'male', ageYears: '28', heightCm: 175, weightKg: 'bad' }, // age/weight 为非法字符串
       }),
     });
     expect(res.status).toBe(422);
     const body = await res.json();
     expect(body.fieldErrors.ageYears).toBeTruthy();
     expect(body.fieldErrors.weightKg).toBeTruthy();
+    // 被拒绝后该步骤不存在：恢复时 steps 仍为空
+    const check = await app.request(`/api/assessments/${sessionId}`, { headers: { cookie } });
+    expect((await check.json()).steps).toEqual([]);
+  });
+
+  it('分屏草稿：只提交某一步的部分合法字段 -> 200（完整性留到 submit 裁决）', async () => {
+    const { sessionId, cookie } = await createSession();
+    const res = await app.request(`/api/assessments/${sessionId}/steps/basics`, {
+      method: 'PATCH',
+      headers: { cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ stepKey: 'basics', answer: { sex: 'male', heightCm: 175 } }),
+    });
+    expect(res.status).toBe(200);
+    const check = await app.request(`/api/assessments/${sessionId}`, { headers: { cookie } });
+    const steps = (await check.json()).steps;
+    expect(steps).toHaveLength(1);
+    expect(steps[0].answer).toMatchObject({ sex: 'male', heightCm: 175 });
   });
 });

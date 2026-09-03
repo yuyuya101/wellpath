@@ -3,32 +3,64 @@
  * 保证前后端校验一致、错误字段同名。Zod 4。
  */
 import { z } from 'zod';
-import { LIMITS } from '@/server/domain/health/constants';
+import {
+  LIMITS,
+  GOALS,
+  PACES,
+  BODY_BUILDS,
+  DAILY_MOVEMENTS,
+  WORKOUT_PREFERENCES,
+  FOCUS_AREAS,
+  WEIGHT_TENDENCIES,
+} from '@/server/domain/health/constants';
 
 // ---------- 基础原子 ----------
 export const sexSchema = z.enum(['male', 'female']);
 export const activitySchema = z.enum(['sedentary', 'light', 'moderate', 'active', 'athlete']);
 export const specialConditionSchema = z.enum(['pregnancy', 'breastfeeding']).nullable().optional();
 
+// v2：目标方向 / 节奏 / 报告型问卷字段（报告型字段均可选，不进核心公式）
+export const goalSchema = z.enum(GOALS);
+export const paceSchema = z.enum(PACES);
+export const bodyBuildSchema = z.enum(BODY_BUILDS);
+export const dailyMovementSchema = z.enum(DAILY_MOVEMENTS);
+export const workoutPreferencesSchema = z.array(z.enum(WORKOUT_PREFERENCES)).max(5);
+export const focusAreasSchema = z.array(z.enum(FOCUS_AREAS)).max(4);
+export const weightTendencySchema = z.enum(WEIGHT_TENDENCIES);
+
 /** 问卷分步键（前端步骤条与后端 step_key 共用，顺序即填写顺序） */
 export const STEP_KEYS = ['basics', 'goal', 'activity', 'condition'] as const;
 export const stepKeySchema = z.enum(STEP_KEYS);
 export type StepKey = (typeof STEP_KEYS)[number];
 
-// ---------- 各步骤答案 ----------
+// ---------- 各步骤答案（持久化仍为 4 步；新增报告型字段全部可选，保证向后兼容） ----------
 export const basicsAnswerSchema = z.object({
   sex: sexSchema,
   ageYears: z.number().int().min(LIMITS.age.min).max(LIMITS.age.max),
   heightCm: z.number().min(LIMITS.heightCm.min).max(LIMITS.heightCm.max),
   weightKg: z.number().min(LIMITS.weightKg.min).max(LIMITS.weightKg.max),
+  bodyBuild: bodyBuildSchema.optional(),
 });
 
 export const goalAnswerSchema = z.object({
   targetWeightKg: z.number().min(LIMITS.weightKg.min).max(LIMITS.weightKg.max),
+  // 缺省由领域层兜底为 lose / moderate，旧客户端数据仍合法
+  goal: goalSchema.optional(),
+  pace: paceSchema.optional(),
 });
 
-export const activityAnswerSchema = z.object({ activity: activitySchema });
-export const conditionAnswerSchema = z.object({ specialCondition: specialConditionSchema });
+export const activityAnswerSchema = z.object({
+  activity: activitySchema,
+  dailyMovement: dailyMovementSchema.optional(),
+  workoutPreferences: workoutPreferencesSchema.optional(),
+  stairTolerance: z.enum(['easily', 'slightly', 'one_flight', 'breathless']).optional(),
+});
+
+export const conditionAnswerSchema = z.object({
+  specialCondition: specialConditionSchema,
+  weightTendency: weightTendencySchema.optional(),
+  focusAreas: focusAreasSchema.optional(),
+});
 
 /** 单步答案：结构校验宽松到 record，强类型按 stepKey 在服务层分发 */
 export const stepAnswerSchema = z.record(z.string(), z.unknown());
@@ -42,6 +74,15 @@ export const fullProfileSchema = z.object({
   targetWeightKg: z.number().min(LIMITS.weightKg.min).max(LIMITS.weightKg.max),
   activity: activitySchema,
   specialCondition: specialConditionSchema,
+  // v2 扩展（可选）
+  goal: goalSchema.optional(),
+  pace: paceSchema.optional(),
+  bodyBuild: bodyBuildSchema.optional(),
+  dailyMovement: dailyMovementSchema.optional(),
+  workoutPreferences: workoutPreferencesSchema.optional(),
+  stairTolerance: z.enum(['easily', 'slightly', 'one_flight', 'breathless']).optional(),
+  weightTendency: weightTendencySchema.optional(),
+  focusAreas: focusAreasSchema.optional(),
 });
 export type FullProfile = z.infer<typeof fullProfileSchema>;
 

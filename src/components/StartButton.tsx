@@ -22,25 +22,17 @@ export function StartButton() {
   }
 
   return (
-    <div>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
       <button
         onClick={start}
         disabled={loading}
-        style={{
-          background: 'var(--accent)',
-          color: '#fff',
-          border: 0,
-          borderRadius: 10,
-          padding: '12px 22px',
-          fontSize: 15,
-          cursor: loading ? 'wait' : 'pointer',
-          minHeight: 44,
-        }}
+        className="btn btn-primary"
+        style={{ maxWidth: 340 }}
       >
         {loading ? 'Starting…' : 'Start free assessment'}
       </button>
       {error && (
-        <p role="alert" style={{ color: '#c0392b', marginTop: 12 }}>
+        <p role="alert" className="note danger" style={{ margin: 0 }}>
           {error}
         </p>
       )}

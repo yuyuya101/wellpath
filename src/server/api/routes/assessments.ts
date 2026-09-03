@@ -30,11 +30,14 @@ import {
 const uuidParam = z.uuid();
 
 /** 每个步骤对应的强类型答案契约：单步保存即按步骤校验，非法/缺字段当场拒绝，脏数据不落库 */
+// 分步草稿：PATCH 允许保存某一步的部分字段（一个 step 在 UI 上拆成多屏收集），
+// 但每个已提供字段仍必须类型/枚举合法（挡住 ''、字符串数字、非法枚举等脏值）；
+// 跨字段完整性由 submit 时的 fullProfileSchema 最终裁决。
 const STEP_ANSWER_SCHEMA = {
-  basics: basicsAnswerSchema,
-  goal: goalAnswerSchema,
-  activity: activityAnswerSchema,
-  condition: conditionAnswerSchema,
+  basics: basicsAnswerSchema.partial(),
+  goal: goalAnswerSchema.partial(),
+  activity: activityAnswerSchema.partial(),
+  condition: conditionAnswerSchema.partial(),
 } as const;
 
 function parseId(value: string): string {

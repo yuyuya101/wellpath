@@ -1,4 +1,4 @@
-import { AssessmentFlow } from './AssessmentFlow';
+import AssessmentFlow from './AssessmentFlow';
 
 export default async function AssessmentPage({
   params,

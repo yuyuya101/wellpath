@@ -331,3 +331,94 @@ describe('T16 修改重算', () => {
     expect(body.payload.result.tdee).toBe(2111);
   });
 });
+
+/** 以自定义四步答案创建并填完，返回 {sessionId,cookie}（未提交） */
+async function fillSteps(steps: Array<[string, object]>) {
+  const mk = await app.request('/api/assessments', { method: 'POST' });
+  const setCookie = mk.headers.get('set-cookie') ?? '';
+  const token = setCookie.match(new RegExp(`${ACCESS_COOKIE}=([^;]+)`))?.[1];
+  const { sessionId } = (await json(mk)) as { sessionId: string };
+  const cookie = `${ACCESS_COOKIE}=${token}`;
+  for (const [stepKey, answer] of steps) {
+    const res = await app.request(`/api/assessments/${sessionId}/steps/${stepKey}`, {
+      method: 'PATCH',
+      headers: { cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ stepKey, answer }),
+    });
+    expect(res.status).toBe(200);
+  }
+  return { sessionId, cookie };
+}
+
+async function payOnce(sessionId: string, cookie: string) {
+  return app.request('/api/pay', {
+    method: 'POST',
+    headers: { cookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ sessionId, idempotencyKey: randomUUID(), productCode: 'wellpath_premium_30d' }),
+  });
+}
+
+describe('T17 双目标：增重 / 维持 端到端', () => {
+  it('增重：免费摘要方向=surplus 且无保护值；支付后完整结果为 TDEE+350 并带个性化建议', async () => {
+    const { sessionId, cookie } = await fillSteps([
+      ['basics', { sex: 'male', ageYears: 28, heightCm: 175, weightKg: 60, bodyBuild: 'slim' }],
+      ['goal', { goal: 'gain', targetWeightKg: 68, pace: 'moderate' }],
+      ['activity', { activity: 'light', dailyMovement: 'desk', workoutPreferences: ['strength'] }],
+      ['condition', { specialCondition: null, weightTendency: 'hard_to_gain', focusAreas: ['nutrition'] }],
+    ]);
+    await submit(sessionId, cookie);
+
+    const free = await json(await app.request(`/api/assessments/${sessionId}/result`, { headers: { cookie } }));
+    expect(free.access).toBe('free');
+    expect(free.freeSummary.goal).toBe('gain');
+    expect(free.freeSummary.energyDirection).toBe('surplus');
+    // 免费通道物理上不含任何保护值
+    expect(free.payload).toBeUndefined();
+    for (const k of ['bmr', 'tdee', 'recommendedIntake']) expect(free.freeSummary).not.toHaveProperty(k);
+
+    await payOnce(sessionId, cookie);
+    const full = await json(await app.request(`/api/assessments/${sessionId}/result`, { headers: { cookie } }));
+    expect(full.access).toBe('full');
+    expect(full.payload.result.energyDirection).toBe('surplus');
+    expect(full.payload.result.energyAdjustment).toBe(350);
+    expect(full.payload.result.tdee).toBe(2143);
+    expect(full.payload.result.recommendedIntake).toBe(2493); // 2143 + 350
+    expect(full.payload.result.targetDateRangeWeeks).toEqual({ fastestWeeks: 16, steadyWeeks: 32 });
+    // 会员专属画像与确定性建议
+    expect(full.payload.profile.workoutPreferences).toEqual(['strength']);
+    expect(Array.isArray(full.payload.recommendations)).toBe(true);
+    expect(full.payload.recommendations.length).toBeGreaterThan(0);
+  });
+
+  it('维持：目标=当前，方向 maintenance、摄入=TDEE、无时间线', async () => {
+    const { sessionId, cookie } = await fillSteps([
+      ['basics', { sex: 'male', ageYears: 28, heightCm: 175, weightKg: 70 }],
+      ['goal', { goal: 'maintain', targetWeightKg: 70, pace: 'moderate' }],
+      ['activity', { activity: 'light' }],
+      ['condition', { specialCondition: null }],
+    ]);
+    await submit(sessionId, cookie);
+    await payOnce(sessionId, cookie);
+    const full = await json(await app.request(`/api/assessments/${sessionId}/result`, { headers: { cookie } }));
+    expect(full.payload.result.energyDirection).toBe('maintenance');
+    expect(full.payload.result.energyAdjustment).toBe(0);
+    expect(full.payload.result.tdee).toBe(2281);
+    expect(full.payload.result.recommendedIntake).toBe(2281);
+    expect(full.payload.result.targetDateRangeWeeks).toBeNull();
+  });
+
+  it('增重目标超过 BMI25 健康上限 -> submit 422 字段错误，不写结果', async () => {
+    const { sessionId, cookie } = await fillSteps([
+      ['basics', { sex: 'male', ageYears: 28, heightCm: 175, weightKg: 60 }],
+      ['goal', { goal: 'gain', targetWeightKg: 80, pace: 'moderate' }], // 175 上限 76.56
+      ['activity', { activity: 'light' }],
+      ['condition', { specialCondition: null }],
+    ]);
+    const res = await submit(sessionId, cookie);
+    expect(res.status).toBe(422);
+    const body = await json(res);
+    expect(body.fieldErrors.targetWeightKg).toBeDefined();
+    const [row] = await h.db.select().from(assessmentResult).where(eq(assessmentResult.sessionId, sessionId));
+    expect(row).toBeUndefined();
+  });
+});

@@ -153,3 +153,84 @@ describe('输入越界', () => {
     expect(() => assess({ ...base, ageYears: 28, ...over } as never)).toThrow(HealthDomainError);
   });
 });
+
+describe('v2 目标方向：增重 / 维持 / 节奏', () => {
+  it('增重：男28/175/60→68 gain/moderate/light = TDEE+350，方向 surplus，周数按增重速率', () => {
+    const out = assess({
+      sex: 'male', ageYears: 28, heightCm: 175, weightKg: 60,
+      targetWeightKg: 68, activity: 'light', goal: 'gain', pace: 'moderate',
+    });
+    expect(out.kind).toBe('complete');
+    if (out.kind !== 'complete') return;
+    const r = out.result;
+    expect(r.bmi).toBe(19.6);
+    expect(r.bmiCategory).toBe('normal');
+    expect(r.goal).toBe('gain');
+    expect(r.energyDirection).toBe('surplus');
+    expect(r.energyAdjustment).toBe(350);
+    expect(r.bmr).toBeCloseTo(1558.75, 5);
+    expect(r.tdee).toBe(2143);
+    expect(r.recommendedIntake).toBe(2493);
+    expect(r.weightDeltaKg).toBe(8);
+    expect(r.targetDateRangeWeeks).toEqual({ fastestWeeks: 16, steadyWeeks: 32 });
+  });
+
+  it('增重 steady 档盈余 200', () => {
+    const out = assess({
+      sex: 'male', ageYears: 28, heightCm: 175, weightKg: 60,
+      targetWeightKg: 68, activity: 'light', goal: 'gain', pace: 'steady',
+    });
+    if (out.kind !== 'complete') throw new Error('expected complete');
+    expect(out.result.energyAdjustment).toBe(200);
+    expect(out.result.recommendedIntake).toBe(2343);
+  });
+
+  it('增重目标超过 BMI25 健康上限 -> TARGET_TOO_HIGH', () => {
+    expect(() => assess({
+      sex: 'male', ageYears: 28, heightCm: 175, weightKg: 60,
+      targetWeightKg: 77, activity: 'light', goal: 'gain',
+    })).toThrow(/TARGET_TOO_HIGH/);
+  });
+
+  it('增重但目标不高于当前 -> INVALID_TARGET', () => {
+    expect(() => assess({
+      sex: 'male', ageYears: 28, heightCm: 175, weightKg: 70,
+      targetWeightKg: 68, activity: 'light', goal: 'gain',
+    })).toThrow(/INVALID_TARGET/);
+  });
+
+  it('减重 fast 档缺口 750（样例1：2726-750=1976），方向 deficit', () => {
+    const out = assess({
+      sex: 'male', ageYears: 28, heightCm: 175, weightKg: 80,
+      targetWeightKg: 70, activity: 'moderate', goal: 'lose', pace: 'fast',
+    });
+    if (out.kind !== 'complete') throw new Error('expected complete');
+    expect(out.result.energyDirection).toBe('deficit');
+    expect(out.result.energyAdjustment).toBe(-750);
+    expect(out.result.recommendedIntake).toBe(1976);
+  });
+
+  it('维持：方向 maintenance、摄入=TDEE、无周数、调整为0', () => {
+    const out = assess({
+      sex: 'male', ageYears: 28, heightCm: 175, weightKg: 70,
+      targetWeightKg: 70, activity: 'moderate', goal: 'maintain',
+    });
+    if (out.kind !== 'complete') throw new Error('expected complete');
+    expect(out.result.energyDirection).toBe('maintenance');
+    expect(out.result.energyAdjustment).toBe(0);
+    expect(out.result.recommendedIntake).toBe(out.result.tdee);
+    expect(out.result.targetDateRangeWeeks).toBeNull();
+  });
+
+  it('缺省 goal/pace 时与 v1 减重口径完全一致（向后兼容）', () => {
+    const out = assess({
+      sex: 'male', ageYears: 28, heightCm: 175, weightKg: 80,
+      targetWeightKg: 70, activity: 'moderate',
+    });
+    if (out.kind !== 'complete') throw new Error('expected complete');
+    expect(out.result.goal).toBe('lose');
+    expect(out.result.pace).toBe('moderate');
+    expect(out.result.energyDirection).toBe('deficit');
+    expect(out.result.recommendedIntake).toBe(2226);
+  });
+});

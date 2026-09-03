@@ -5,10 +5,15 @@ import {
   ACTIVITY_FACTORS,
   BMI_THRESHOLDS,
   CALORIE_DEFICIT,
+  CALORIE_DEFICIT_BY_PACE,
+  CALORIE_SURPLUS_BY_PACE,
   LOSS_RATE_KG_PER_WEEK,
   MIN_SAFE_INTAKE,
+  HEALTHY_GAIN_CEILING_BMI,
   type ActivityLevel,
   type BmiCategory,
+  type Goal,
+  type Pace,
   type Sex,
 } from './constants';
 
@@ -93,4 +98,57 @@ export function round1(n: number): number {
 }
 export function round2(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+/* ============================ v2：目标方向（lose / maintain / gain） ============================ */
+
+/** 增重目标体重健康上限 = 25 × h²（kg，BMI 25 之上不建议作为增重目标） */
+export function healthyMaxTargetWeight(heightCm: number): number {
+  return round2(HEALTHY_GAIN_CEILING_BMI * toMeter(heightCm) ** 2);
+}
+
+/** 方向无关的目标时间线（周）：按到目标的绝对距离 ÷ 速率，目标≈当前时为 null（维持） */
+export function targetTimeline(
+  currentWeightKg: number,
+  targetWeightKg: number,
+): { fastestWeeks: number; steadyWeeks: number } | null {
+  const delta = Math.abs(currentWeightKg - targetWeightKg);
+  if (delta < 0.05) return null;
+  return {
+    fastestWeeks: Math.ceil(delta / LOSS_RATE_KG_PER_WEEK.fast),
+    steadyWeeks: Math.ceil(delta / LOSS_RATE_KG_PER_WEEK.steady),
+  };
+}
+
+export type EnergyDirection = 'deficit' | 'maintenance' | 'surplus';
+
+/**
+ * 方向化每日摄入规划（确定性、纯函数）。
+ * - maintain / 目标≈当前：TDEE
+ * - lose：TDEE − 缺口（按 pace），不低于性别安全底线
+ * - gain：TDEE + 盈余（按 pace）
+ * 缺省 goal=lose、pace=moderate 时与 v1 recommendedIntake 数值完全一致（向后兼容）。
+ */
+export function planIntake(
+  sex: Sex,
+  tdee: number,
+  currentWeightKg: number,
+  targetWeightKg: number,
+  goal: Goal = 'lose',
+  pace: Pace = 'moderate',
+): { value: number; floorApplied: boolean; direction: EnergyDirection; adjustment: number } {
+  if (Math.abs(currentWeightKg - targetWeightKg) < 0.05 || goal === 'maintain') {
+    return { value: Math.round(tdee), floorApplied: false, direction: 'maintenance', adjustment: 0 };
+  }
+  if (targetWeightKg < currentWeightKg && goal !== 'gain') {
+    const deficit = CALORIE_DEFICIT_BY_PACE[pace];
+    const candidate = Math.round(tdee - deficit);
+    const floor = MIN_SAFE_INTAKE[sex];
+    if (candidate < floor) {
+      return { value: floor, floorApplied: true, direction: 'deficit', adjustment: -deficit };
+    }
+    return { value: candidate, floorApplied: false, direction: 'deficit', adjustment: -deficit };
+  }
+  const surplus = CALORIE_SURPLUS_BY_PACE[pace];
+  return { value: Math.round(tdee + surplus), floorApplied: false, direction: 'surplus', adjustment: surplus };
 }

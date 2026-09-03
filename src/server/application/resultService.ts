@@ -47,15 +47,64 @@ export function assembleProfile(stepRows: Array<{ stepKey: string; answer: unkno
 
 /** 免费摘要：只保留非敏感概览，绝不包含 BMR/TDEE/摄入等保护字段 */
 export function buildFreeSummary(profile: FullProfile, result: HealthResult) {
+  const headlineByDirection: Record<string, string> = {
+    deficit: `Your BMI is ${result.bmi} (${result.bmiCategory}). A safe calorie deficit moves you toward your goal — unlock exact calories, timeline and daily targets.`,
+    surplus: `Your BMI is ${result.bmi} (${result.bmiCategory}). A controlled surplus supports lean gains — unlock exact calories, timeline and daily targets.`,
+    maintenance: `Your BMI is ${result.bmi} (${result.bmiCategory}). Keep your weight while improving fitness — unlock your maintenance calories and daily targets.`,
+  };
   return {
     bmi: result.bmi,
     bmiCategory: result.bmiCategory,
     isHealthyTarget: result.isHealthyTarget,
     weightDeltaKg: result.weightDeltaKg,
     targetDateRangeWeeks: result.targetDateRangeWeeks,
-    headline: `Your BMI is ${result.bmi} (${result.bmiCategory}). Unlock your full plan for calories, timeline and daily targets.`,
+    // 目标方向/节奏不属于保护字段，免费页据此展示差异化标题
+    goal: result.goal,
+    pace: result.pace,
+    energyDirection: result.energyDirection,
+    headline: headlineByDirection[result.energyDirection] ?? headlineByDirection.deficit,
     sex: profile.sex,
   };
+}
+
+/**
+ * 会员专属：基于画像字段的确定性个性化建议（纯规则，不使用任何模型出健康值）。
+ * 仅进入 full payload，免费 DTO 物理上不含。
+ */
+export function buildRecommendations(profile: FullProfile, result: HealthResult): string[] {
+  const tips: string[] = [];
+  const adj = Math.abs(result.energyAdjustment);
+
+  if (result.energyDirection === 'deficit') {
+    tips.push(`Eat about ${result.recommendedIntake} kcal/day — a ${adj} kcal deficit from your TDEE. Prioritise protein at each meal to preserve lean mass.`);
+  } else if (result.energyDirection === 'surplus') {
+    tips.push(`Eat about ${result.recommendedIntake} kcal/day — a ${adj} kcal surplus from your TDEE. Add the extra calories mostly from protein and whole foods to favour muscle over fat.`);
+  } else {
+    tips.push(`Eat about ${result.recommendedIntake} kcal/day to hold your weight; stay within roughly ±100 kcal on most days.`);
+  }
+
+  if (result.targetDateRangeWeeks) {
+    const verb = result.energyDirection === 'surplus' ? 'gain' : 'lose';
+    tips.push(`At your chosen pace, expect to ${verb} ${result.weightDeltaKg} kg in roughly ${result.targetDateRangeWeeks.fastestWeeks}–${result.targetDateRangeWeeks.steadyWeeks} weeks. Weekly weigh-ins keep the trend honest.`);
+  }
+
+  for (const focus of profile.focusAreas ?? []) {
+    if (focus === 'nutrition') tips.push('Nutrition focus: plan protein and fibre first, then fill the rest of your plate — this is what moves the scale most.');
+    if (focus === 'activity') tips.push('Activity focus: combine 2–3 strength sessions with regular steps; exercise supports the deficit but diet drives weight change.');
+    if (focus === 'sleep') tips.push('Sleep focus: aim for 7–9 hours — poor sleep raises hunger and makes calorie targets harder to hit.');
+    if (focus === 'consistency') tips.push('Consistency focus: hit your target on ~80% of days; one off day does not undo a week of good ones.');
+  }
+
+  if (profile.weightTendency === 'gain_fast_lose_slow') {
+    tips.push('You tend to gain easily and lose slowly, so keep the deficit/surplus modest and track weekly averages rather than daily swings.');
+  }
+  if (profile.stairTolerance === 'breathless' || profile.stairTolerance === 'one_flight') {
+    tips.push('Start with low-impact activity (brisk walking, cycling) and build duration before intensity to avoid burnout or injury.');
+  }
+  if ((profile.workoutPreferences ?? []).includes('strength')) {
+    tips.push('Since you enjoy strength training, keep progressive overload — it is the best signal for your body to keep (or add) muscle.');
+  }
+  return tips;
 }
 
 export interface SubmitOutcome {
@@ -99,7 +148,12 @@ async function computeOutcome(db: Db, sessionId: string) {
   }
   return {
     kind: 'complete' as const,
-    payload: { kind: 'complete', profile, result: outcome.result },
+    payload: {
+      kind: 'complete',
+      profile,
+      result: outcome.result,
+      recommendations: buildRecommendations(profile, outcome.result),
+    },
     freeSummary: buildFreeSummary(profile, outcome.result),
   };
 }
