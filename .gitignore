@@ -38,3 +38,6 @@ playwright-report/
 blob-report/
 _build/
 .playwright-metadata/
+
+# local one-shot helper (absolute machine path)
+/推送到GitHub.bat
