@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { createTestDb, type TestDbHandle } from '@/server/infrastructure/db/client';
 import { createApp, type AppType } from '@/server/api/app';
 import { ACCESS_COOKIE } from '@/server/application/assessmentService';
-import { subscription, recoveryToken, assessmentResult, assessmentSession } from '@/server/infrastructure/db/schema';
+import { subscription, recoveryToken, assessmentResult, assessmentSession, entitlement } from '@/server/infrastructure/db/schema';
 import { eq } from 'drizzle-orm';
 
 let h: TestDbHandle;
@@ -110,23 +110,34 @@ describe('T09 提交事务', () => {
   });
 });
 
-describe('T10 结果 DTO 脱敏', () => {
-  it('未支付：免费摘要且不含保护字段键', async () => {
+describe('T10 结果 DTO 脱敏（会员/非会员边界）', () => {
+  it('未支付：免费摘要 + 被锁字段清单 + 升级指引，且保护字段“值”绝不返回', async () => {
     const { sessionId, cookie } = await fullSteps();
     await submit(sessionId, cookie);
     const res = await app.request(`/api/assessments/${sessionId}/result`, { headers: { cookie } });
     expect(res.status).toBe(200);
     const body = await json(res);
+    // 边界身份显式可见
     expect(body.access).toBe('free');
+    expect(body.entitlementTier).toBe('free');
     expect(body.locked).toBe(true);
-    const serialized = JSON.stringify(body);
-    expect(serialized).not.toContain('bmr');
-    expect(serialized).not.toContain('tdee');
-    expect(serialized).not.toContain('recommendedIntake');
+    // 免费通道根本不存在 payload；免费摘要里也没有任何保护字段的值
+    expect(body.payload).toBeUndefined();
+    const protectedKeys = ['bmr', 'tdee', 'recommendedIntake', 'activityFactor', 'minSafeFloorApplied'];
+    for (const k of protectedKeys) expect(body.freeSummary).not.toHaveProperty(k);
+    // 被锁字段“名”清单必须显式回传（引导付费），与真实保护字段一一对应
+    const lockedKeys = body.lockedFields.map((f: { key: string }) => f.key);
+    for (const k of ['bmr', 'tdee', 'recommendedIntake', 'activityFactor', 'safeFloor']) {
+      expect(lockedKeys).toContain(k);
+    }
+    // 结构化升级指引（公司要求：脱敏同时提示需付费）
+    expect(body.upgrade.required).toBe(true);
+    expect(body.upgrade.endpoint).toBe('POST /api/pay');
+    // 免费概览数值仍在
     expect(body.freeSummary.bmi).toBe(26.1);
   });
 
-  it('支付后：完整结果含保护字段', async () => {
+  it('支付后：完整结果含保护字段，lockedFields 为空并回传会员到期时间', async () => {
     const { sessionId, cookie } = await fullSteps();
     await submit(sessionId, cookie);
     const payRes = await app.request('/api/pay', {
@@ -138,8 +149,33 @@ describe('T10 结果 DTO 脱敏', () => {
     const res = await app.request(`/api/assessments/${sessionId}/result`, { headers: { cookie } });
     const body = await json(res);
     expect(body.access).toBe('full');
+    expect(body.entitlementTier).toBe('premium');
+    expect(body.locked).toBe(false);
+    expect(body.lockedFields).toEqual([]);
+    expect(body.entitlementExpiresAt).toBeTruthy();
     expect(body.payload.result.tdee).toBe(2726);
     expect(body.payload.result.recommendedIntake).toBe(2226);
+  });
+
+  it('会员过期（expiresAt 已过）-> 自动回退免费脱敏，不再返回完整 payload', async () => {
+    const { sessionId, cookie } = await fullSteps();
+    await submit(sessionId, cookie);
+    await app.request('/api/pay', {
+      method: 'POST',
+      headers: { cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ sessionId, idempotencyKey: randomUUID(), productCode: 'wellpath_premium_30d' }),
+    });
+    // 会员期内应为 full
+    const before = await json(await app.request(`/api/assessments/${sessionId}/result`, { headers: { cookie } }));
+    expect(before.access).toBe('full');
+    // 把权益到期时间拨到过去，模拟 30 天订阅过期（数据不删，仅回退免费）
+    await h.db.update(entitlement).set({ expiresAt: new Date(Date.now() - 1000) });
+    const after = await json(await app.request(`/api/assessments/${sessionId}/result`, { headers: { cookie } }));
+    expect(after.access).toBe('free');
+    expect(after.entitlementTier).toBe('free');
+    expect(after.payload).toBeUndefined();
+    expect(after.lockedFields.length).toBeGreaterThan(0);
+    expect(after.freeSummary.bmi).toBe(26.1); // 结果数据仍在，只是重新脱敏
   });
 });
 

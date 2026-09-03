@@ -151,15 +151,24 @@
       "ResultView": {
         "type": "object",
         "properties": {
-          "access": { "enum": ["free", "full", "protected"] },
-          "locked": { "type": "boolean" },
+          "sessionId": { "type": "string", "format": "uuid" },
+          "access": { "enum": ["free", "full", "protected"], "description": "free=non-member (gated), full=premium, protected=safety path (no deficit plan)" },
+          "entitlementTier": { "enum": ["free", "premium"], "description": "Server-side subscription status resolved from the entitlement table (expiry-aware)" },
+          "locked": { "type": "boolean", "description": "true for non-members" },
+          "lockedFields": {
+            "type": "array",
+            "description": "Field names hidden from non-members (upsell guide). Non-empty for free; empty array for full.",
+            "items": { "type": "object", "properties": { "key": { "type": "string" }, "label": { "type": "string" } }, "required": ["key", "label"] }
+          },
+          "upgrade": { "type": "object", "description": "Present only for free; structured paywall CTA", "properties": { "required": { "type": "boolean" }, "productCode": { "type": "string" }, "endpoint": { "type": "string" }, "message": { "type": "string" } } },
+          "entitlementExpiresAt": { "type": "string", "format": "date-time", "description": "Premium expiry; present only when access=full" },
           "freeSummary": { "type": "object", "properties": { "bmi": { "type": "number" }, "bmiCategory": { "type": "string" }, "isHealthyTarget": { "type": "boolean" }, "weightDeltaKg": { "type": "number" }, "headline": { "type": "string" } } },
           "payload": { "type": "object", "description": "Present only when access=full. Contains result{bmi,bmr,tdee,recommendedIntake,activityFactor,targetDateRangeWeeks,...}." }
         },
-        "required": ["access"]
+        "required": ["access", "entitlementTier", "locked", "lockedFields"]
       },
       "PayRequest": { "type": "object", "properties": { "sessionId": { "type": "string", "format": "uuid" }, "idempotencyKey": { "type": "string", "format": "uuid" }, "productCode": { "type": "string", "default": "wellpath_premium_30d" }, "simulate": { "enum": ["fail"], "description": "Non-production failure injection" } }, "required": ["sessionId", "idempotencyKey", "productCode"] },
-      "PayResult": { "type": "object", "properties": { "status": { "enum": ["paid", "failed", "replayed"] }, "replayed": { "type": "boolean" }, "subscriptionId": { "type": "string" }, "recoveryCode": { "type": "string", "nullable": true, "description": "Returned only once, on the first successful payment" }, "premiumExpiresAt": { "type": "string", "format": "date-time", "nullable": true } }, "required": ["status", "replayed", "recoveryCode"] }
+      "PayResult": { "type": "object", "properties": { "status": { "enum": ["succeeded", "failed"] }, "replayed": { "type": "boolean" }, "subscriptionId": { "type": "string" }, "recoveryCode": { "type": "string", "nullable": true, "description": "Returned only once, on the first successful payment" }, "premiumExpiresAt": { "type": "string", "format": "date-time", "nullable": true } }, "required": ["status", "replayed", "recoveryCode"] }
     }
   }
 }

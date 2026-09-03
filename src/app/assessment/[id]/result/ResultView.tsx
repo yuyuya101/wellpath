@@ -24,12 +24,20 @@ interface FreeSummary {
   targetDateRangeWeeks: { fastestWeeks: number; steadyWeeks: number } | null;
   headline: string;
 }
+interface LockedField {
+  key: string;
+  label: string;
+}
 interface ResultResp {
   access: 'full' | 'free' | 'protected';
   message?: string;
   payload?: { result: FullResult };
   freeSummary?: FreeSummary;
   locked?: boolean;
+  entitlementTier?: 'free' | 'premium';
+  entitlementExpiresAt?: string;
+  lockedFields?: LockedField[];
+  upgrade?: { required: boolean; productCode: string; endpoint: string; message: string };
 }
 
 const PRODUCT_CODE = 'wellpath_premium_30d';
@@ -106,13 +114,29 @@ export function ResultView({ sessionId }: { sessionId: string }) {
             <p style={{ color: 'var(--muted)', lineHeight: 1.6 }}>{data.freeSummary.headline}</p>
           </div>
 
+          <div className="card" style={{ background: '#fafafa' }}>
+            <h2 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span>Locked in the free plan</span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', background: '#eef0f2', borderRadius: 99, padding: '2px 10px' }}>
+                {data.lockedFields?.length ?? 0} fields
+              </span>
+            </h2>
+            {(data.lockedFields ?? []).map((f) => (
+              <div
+                key={f.key}
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '9px 0', borderBottom: '1px solid #f0f0f0' }}
+              >
+                <span style={{ color: 'var(--muted)', fontSize: 14 }}>{f.label}</span>
+                <span style={{ whiteSpace: 'nowrap', fontSize: 12, color: '#9ca3af' }}>🔒 Locked</span>
+              </div>
+            ))}
+          </div>
+
           <div className="card" style={{ border: '1px solid var(--accent)' }}>
             <h2>Unlock your full plan</h2>
-            <ul style={{ lineHeight: 1.8, paddingLeft: 18 }}>
-              <li>Daily calorie target (BMR / TDEE breakdown)</li>
-              <li>Personalized safe timeline</li>
-              <li>One recovery code to retrieve your plan later</li>
-            </ul>
+            <p style={{ color: 'var(--muted)', lineHeight: 1.6, marginTop: 0 }}>
+              {data.upgrade?.message ?? 'Upgrade to unlock your full plan.'}
+            </p>
             <button onClick={() => checkout()} disabled={paying} style={primaryBtn}>
               {paying ? 'Processing…' : 'Unlock now (simulated)'}
             </button>
@@ -128,7 +152,12 @@ export function ResultView({ sessionId }: { sessionId: string }) {
       {data.access === 'full' && data.payload && (
         <section>
           <div className="card" style={{ border: '1px solid var(--accent)' }}>
-            <h2>Your full plan</h2>
+            <h2 style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <span>Your full plan</span>
+              <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.4px', color: 'var(--accent)', background: 'rgba(47,125,107,.1)', borderRadius: 99, padding: '3px 12px' }}>
+                PREMIUM
+              </span>
+            </h2>
             <Stat label="BMI" value={`${data.payload.result.bmi} (${data.payload.result.bmiCategory})`} />
             <Stat label="BMR" value={`${Math.round(data.payload.result.bmr)} kcal/day`} />
             <Stat label="TDEE" value={`${data.payload.result.tdee} kcal/day`} />
@@ -139,6 +168,11 @@ export function ResultView({ sessionId }: { sessionId: string }) {
                 label="Timeline"
                 value={`${data.payload.result.targetDateRangeWeeks.fastestWeeks}–${data.payload.result.targetDateRangeWeeks.steadyWeeks} weeks`}
               />
+            )}
+            {data.entitlementExpiresAt && (
+              <p style={{ fontSize: 12, color: 'var(--muted)', margin: '10px 0 0' }}>
+                Premium active until {new Date(data.entitlementExpiresAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+              </p>
             )}
             {data.payload.result.minSafeFloorApplied && (
               <p style={{ color: '#b45309', fontSize: 13 }}>

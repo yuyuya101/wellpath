@@ -163,12 +163,55 @@ async function getActiveEntitlement(db: Db, sessionId: string) {
   return { ent, active };
 }
 
+/**
+ * 会员专属「保护字段」清单——会员/非会员边界的单一事实源（对应 3.1 §7.5 字段权益表）。
+ * 免费结果通过 lockedFields 原样回传这份清单（引导付费、且可被测试逐项核对）；
+ * 会员结果 lockedFields 为空数组。key 与 full payload.result 内的字段一一对应，
+ * 严禁列入 payload 中并不存在的字段（契约与实现必须一致）。
+ */
+export const LOCKED_FIELDS = [
+  { key: 'bmr', label: 'Basal metabolic rate (BMR), kcal/day' },
+  { key: 'tdee', label: 'Daily total energy expenditure (TDEE), kcal/day' },
+  { key: 'recommendedIntake', label: 'Recommended daily calorie intake, kcal/day' },
+  { key: 'activityFactor', label: 'Applied activity factor' },
+  { key: 'safeFloor', label: 'Safe minimum-calorie floor and its warning' },
+] as const;
+
+export type LockedField = (typeof LOCKED_FIELDS)[number];
+
+/** 免费用户的结构化升级指引（公司要求：脱敏的同时“提示需付费”） */
+const UPGRADE_CTA = {
+  required: true,
+  productCode: 'wellpath_premium_30d',
+  endpoint: 'POST /api/pay',
+  message:
+    'Upgrade to premium to unlock BMR/TDEE, recommended intake, activity factor and the safe-floor note.',
+} as const;
+
 export type ResultView =
-  | { access: 'full'; payload: Record<string, unknown>; entitlementTier: 'premium' }
-  | { access: 'free'; freeSummary: unknown; locked: true }
+  | {
+      access: 'full';
+      entitlementTier: 'premium';
+      entitlementExpiresAt: string;
+      locked: false;
+      lockedFields: LockedField[];
+      payload: Record<string, unknown>;
+    }
+  | {
+      access: 'free';
+      entitlementTier: 'free';
+      locked: true;
+      lockedFields: LockedField[];
+      upgrade: typeof UPGRADE_CTA;
+      freeSummary: unknown;
+    }
   | { access: 'protected'; message: string };
 
-/** T10：按权益做字段级脱敏；免费 DTO 保证不含保护字段键 */
+/**
+ * T10：按权益做字段级脱敏。
+ * - free：只回免费摘要 + 被锁字段清单 + 升级指引，响应物理上不含任何保护字段值；
+ * - full：回完整 payload，lockedFields 为空，并显式回传会员层级与到期时间（订阅状态可见）。
+ */
 export async function getResultView(db: Db, sessionId: string): Promise<ResultView> {
   const [row] = await db
     .select()
@@ -181,9 +224,23 @@ export async function getResultView(db: Db, sessionId: string): Promise<ResultVi
     return { access: 'protected', message: String(payload.message ?? '') };
   }
 
-  const { active } = await getActiveEntitlement(db, sessionId);
-  if (active) {
-    return { access: 'full', payload, entitlementTier: 'premium' };
+  const { ent, active } = await getActiveEntitlement(db, sessionId);
+  if (active && ent?.expiresAt) {
+    return {
+      access: 'full',
+      entitlementTier: 'premium',
+      entitlementExpiresAt: ent.expiresAt.toISOString(),
+      locked: false,
+      lockedFields: [],
+      payload,
+    };
   }
-  return { access: 'free', freeSummary: row.freeSummary, locked: true };
+  return {
+    access: 'free',
+    entitlementTier: 'free',
+    locked: true,
+    lockedFields: LOCKED_FIELDS.map((f) => ({ ...f })),
+    upgrade: { ...UPGRADE_CTA },
+    freeSummary: row.freeSummary,
+  };
 }

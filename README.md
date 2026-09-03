@@ -19,7 +19,7 @@ RFC 9457 errors, automated tests at three levels and CI/CD on free tiers.
 | DB (prod) | PostgreSQL on Neon | Free, serverless Postgres |
 | DB (test) | PGlite (WASM) | Zero-install isolated DB per test |
 | Forms | react-hook-form | Uncontrolled, minimal re-renders |
-| Tests | Vitest (unit/integration) + Playwright (e2e) | 44 automated checks + dual-viewport smoke |
+| Tests | Vitest (unit/integration) + Playwright (e2e) | 45 automated checks + dual-viewport smoke |
 | Deploy | Netlify (OpenNext runtime) + Neon Postgres | $0 tier, no credit card, git-push deploys |
 
 ## Architecture
@@ -62,7 +62,7 @@ cp .env.example .env            # see docs/DEPLOYMENT.md; tests need NO .env DAT
 pnpm dev                        # local dev
 pnpm typecheck                  # tsc --noEmit (strict)
 pnpm lint                       # eslint
-pnpm test                       # Vitest: 44 unit/integration tests (PGlite)
+pnpm test                       # Vitest: 45 unit/integration tests (PGlite)
 pnpm build                      # production build
 pnpm test:e2e                   # Playwright dual-viewport smoke (run after build; needs DATABASE_URL)
 pnpm db:migrate                 # apply SQL migration to DATABASE_URL
@@ -79,9 +79,20 @@ pnpm verify                     # typecheck + lint + test + build
 | Domain unit | Vitest | 19 | Mifflin formula, BMI categories, deficit/floor, timeline rounding, protected cases (frozen constants) |
 | Schema | Vitest | 3 | nine-table relations & constraints |
 | API integration | Vitest | 10 | session create/resume, cookie access, step optimistic lock, validation/problem+json |
-| Business flow | Vitest | 12 | atomic submit/rollback, DTO gating, recovery single-use & expiry, idempotency, double-click, simulate-fail, rate limit, recompute, domain-rule→422 regression |
+| Business flow | Vitest | 13 | atomic submit/rollback, free-vs-full DTO gating incl. lockedFields/upgrade CTA, premium-expiry falls back to free, recovery single-use & expiry, idempotency, double-click, simulate-fail, rate limit, recompute, domain-rule→422 regression |
 | E2E | Playwright | 1 spec × 2 viewports | full funnel in real Chromium on desktop + iPhone 12 viewport |
-| **Total** | | **44 + 2 e2e** | all green |
+| **Total** | | **45 + 2 e2e** | all green |
+
+### Coverage scope & deliberate gaps
+**Why these scenarios** — they map 1:1 to the challenge's riskiest invariants: deterministic
+health math (frozen constants + edge/illegal inputs), step persistence & optimistic-lock
+concurrency, the **free-vs-premium boundary** (the free DTO physically omits protected
+values, declares them in `lockedFields`, and a premium past its expiry falls back to free),
+payment idempotency/double-click, single-use recovery, and DB rate limiting.
+**Deliberately not covered and why**:
+- Real third-party payment / webhook signing — out of scope (simulated checkout by spec); the state machine and idempotency it would rely on are fully tested instead.
+- Load/performance and cross-browser matrix — a 3-day backend-skeleton task; correctness is covered at unit/integration level and one dual-viewport E2E guards the critical path.
+- AuthN with passwords/email — the product is anonymous by design; access is a 24h HttpOnly cookie and cross-device recovery uses the single-use HMAC recovery code.
 
 ## API contract
 See [`docs/openapi.json`](docs/openapi.json) (OpenAPI 3.1). All errors are
