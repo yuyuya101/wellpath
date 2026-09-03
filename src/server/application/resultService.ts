@@ -10,7 +10,7 @@ import {
   assessmentStep,
   entitlement,
 } from '@/server/infrastructure/db/schema';
-import { assess, type HealthResult } from '@/server/domain/health/assessment';
+import { assess, HealthDomainError, type HealthResult } from '@/server/domain/health/assessment';
 import { fullProfileSchema, type FullProfile, type StepKey } from '@/server/validation/schemas';
 import { ProblemError } from '@/server/api/errors';
 import { nowTs, isoTs } from '@/server/infrastructure/db/time';
@@ -66,7 +66,24 @@ async function computeOutcome(db: Db, sessionId: string) {
     .from(assessmentStep)
     .where(eq(assessmentStep.sessionId, sessionId));
   const profile = assembleProfile(steps);
-  const outcome = assess(profile);
+  // 领域规则违例（如目标体重高于当前、低于健康下限）属于可预期的输入问题，
+  // 必须翻译为 422 VALIDATION_FAILED + 字段错误，绝不能冒泡成 500。
+  let outcome: ReturnType<typeof assess>;
+  try {
+    outcome = assess(profile);
+  } catch (err) {
+    if (err instanceof HealthDomainError) {
+      const fieldErrors: Record<string, string[]> = Object.fromEntries(
+        Object.entries(err.fields).map(([field, msg]) => [field, [msg]]),
+      );
+      throw new ProblemError(
+        'VALIDATION_FAILED',
+        `health domain rule violated: ${err.code}`,
+        fieldErrors,
+      );
+    }
+    throw err;
+  }
   if (outcome.kind === 'protected') {
     return {
       kind: 'protected' as const,

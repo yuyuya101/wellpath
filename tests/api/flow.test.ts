@@ -80,6 +80,34 @@ describe('T09 提交事务', () => {
     expect(second.status).toBe(200);
     expect(await second.json()).toMatchObject({ recomputed: false });
   });
+
+  it('领域规则违例（目标体重高于当前）-> 422 字段错误而非 500，且不写结果/不置 submitted', async () => {
+    const mk = await app.request('/api/assessments', { method: 'POST' });
+    const cookie = mk.headers.get('set-cookie')?.split(';')[0] ?? '';
+    const { sessionId } = await json(mk);
+    const steps: Array<[string, object]> = [
+      ['basics', { sex: 'male', ageYears: 21, heightCm: 170, weightKg: 50 }],
+      ['goal', { targetWeightKg: 55 }],
+      ['activity', { activity: 'moderate' }],
+      ['condition', { specialCondition: null }],
+    ];
+    for (const [stepKey, answer] of steps) {
+      await app.request(`/api/assessments/${sessionId}/steps/${stepKey}`, {
+        method: 'PATCH',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ stepKey, answer }),
+      });
+    }
+    const res = await submit(sessionId, cookie);
+    expect(res.status).toBe(422);
+    const body = await json(res);
+    expect(body.code).toBe('VALIDATION_FAILED');
+    expect(body.fieldErrors.targetWeightKg).toBeDefined();
+    const [result] = await h.db.select().from(assessmentResult).where(eq(assessmentResult.sessionId, sessionId));
+    expect(result).toBeUndefined();
+    const [s] = await h.db.select().from(assessmentSession).where(eq(assessmentSession.id, sessionId));
+    expect(s!.status).toBe('in_progress');
+  });
 });
 
 describe('T10 结果 DTO 脱敏', () => {

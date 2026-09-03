@@ -48,6 +48,7 @@ export function AssessmentFlow({ sessionId, editMode = false }: { sessionId: str
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [revisions, setRevisions] = useState<Record<string, number>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [fatal, setFatal] = useState<string | null>(null);
 
   const { register, handleSubmit, watch, reset, setValue, trigger, formState } = useForm<FormValues>({
@@ -132,12 +133,26 @@ export function AssessmentFlow({ sessionId, editMode = false }: { sessionId: str
 
   async function finish(v: FormValues) {
     setSubmitting(true);
+    setSubmitError(null);
     try {
       await persist('condition', answerFor('condition', v));
       await api.submit(sessionId, editMode);
       router.push(`/assessment/${sessionId}/result`);
     } catch (e) {
-      setFatal(e instanceof Error ? e.message : 'submit failed');
+      // 422：跨步骤业务规则（如目标体重高于当前/低于健康下限），定位回对应步骤并内联提示
+      if (e instanceof ApiError && e.status === 422 && e.problem?.fieldErrors) {
+        const fieldErrors = e.problem.fieldErrors;
+        const firstField = Object.keys(fieldErrors)[0];
+        const stepOf: Record<string, number> = {
+          sex: 0, ageYears: 0, heightCm: 0, weightKg: 0,
+          targetWeightKg: 1, activity: 2, specialCondition: 3,
+        };
+        if (firstField && stepOf[firstField] !== undefined) setStepIndex(stepOf[firstField]!);
+        const msgs = Object.values(fieldErrors).flat().filter(Boolean);
+        setSubmitError(msgs.length ? msgs.join(' ') : 'Some answers need your review.');
+      } else {
+        setFatal(e instanceof Error ? e.message : 'submit failed');
+      }
       setSubmitting(false);
     }
   }
@@ -179,6 +194,11 @@ export function AssessmentFlow({ sessionId, editMode = false }: { sessionId: str
       </div>
 
       <form onSubmit={handleSubmit(stepIndex === STEPS.length - 1 ? finish : next)} noValidate>
+        {submitError && (
+          <p role="alert" style={{ color: '#c0392b', background: 'rgba(192,57,43,.08)', border: '1px solid rgba(192,57,43,.25)', borderRadius: 8, padding: '10px 12px', fontSize: 14 }}>
+            {submitError}
+          </p>
+        )}
         {stepKey === 'basics' && (
           <section>
             <label style={labelStyle}>Biological sex</label>
