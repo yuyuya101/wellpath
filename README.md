@@ -1,7 +1,8 @@
 # WellPath — Personalized Wellness Assessment Funnel
 
 A production-style full-stack implementation of a health-assessment subscription
-funnel: a 4-step questionnaire produces a **free summary**, and a **simulated,
+funnel: a guided, multi-screen questionnaire (3 sections, persisted as 4 resumable
+steps) supports **lose / maintain / gain** goals and produces a **free summary**, and a **simulated,
 idempotent checkout** unlocks the full plan, with a one-time recovery code.
 
 Built for the Ruiqi "3-day full-stack challenge" under business-grade standards:
@@ -19,7 +20,7 @@ RFC 9457 errors, automated tests at three levels and CI/CD on free tiers.
 | DB (prod) | PostgreSQL on Neon | Free, serverless Postgres |
 | DB (test) | PGlite (WASM) | Zero-install isolated DB per test |
 | Forms | react-hook-form | Uncontrolled, minimal re-renders |
-| Tests | Vitest (unit/integration) + Playwright (e2e) | 47 automated checks + dual-viewport smoke |
+| Tests | Vitest (unit/integration) + Playwright (e2e) | 58 automated checks + dual-viewport smoke |
 | Deploy | Netlify (OpenNext runtime) + Neon Postgres | $0 tier, no credit card, git-push deploys |
 
 ## Architecture
@@ -27,7 +28,7 @@ RFC 9457 errors, automated tests at three levels and CI/CD on free tiers.
 ```
 src/
   app/                      Next App Router: pages + /api/[[...route]] handler
-    assessment/[id]/        4-step wizard (RHF) and result/checkout page
+    assessment/[id]/        multi-screen guided wizard (resumable, optimistic-locked) and result/checkout page
     recovery/               recovery-code redemption
   components/               client components (StartButton)
   lib/                      browser API client, unit conversion
@@ -62,7 +63,7 @@ cp .env.example .env            # see docs/DEPLOYMENT.md; tests need NO .env DAT
 pnpm dev                        # local dev
 pnpm typecheck                  # tsc --noEmit (strict)
 pnpm lint                       # eslint
-pnpm test                       # Vitest: 47 unit/integration tests (PGlite)
+pnpm test                       # Vitest: 58 unit/integration tests (PGlite)
 pnpm build                      # production build
 pnpm test:e2e                   # Playwright dual-viewport smoke (run after build; needs DATABASE_URL)
 pnpm db:migrate                 # apply SQL migration to DATABASE_URL
@@ -76,12 +77,12 @@ pnpm verify                     # typecheck + lint + test + build
 
 | Level | Tool | Count | Covers |
 |---|---|---|---|
-| Domain unit | Vitest | 19 | Mifflin formula, BMI categories, deficit/floor, timeline rounding, protected cases (frozen constants) |
+| Domain unit | Vitest | 26 | Mifflin formula, BMI categories, lose/maintain/gain directions, deficit/surplus/floor, pace, timeline rounding, protected cases (frozen constants) |
 | Schema | Vitest | 3 | nine-table relations & constraints |
-| API integration | Vitest | 12 | session create/resume, cookie access, step optimistic lock, per-step answer validation rejects empty enum/missing/typed-wrong fields, validation/problem+json |
-| Business flow | Vitest | 13 | atomic submit/rollback, free-vs-full DTO gating incl. lockedFields/upgrade CTA, premium-expiry falls back to free, recovery single-use & expiry, idempotency, double-click, simulate-fail, rate limit, recompute, domain-rule→422 regression |
+| API integration | Vitest | 13 | session create/resume, cookie access, step optimistic lock, partial-draft acceptance vs empty-enum/typed-wrong rejection, validation/problem+json |
+| Business flow | Vitest | 16 | atomic submit/rollback, free-vs-full DTO gating incl. lockedFields/upgrade CTA, premium-expiry falls back to free, gain/maintain e2e + BMI25 ceiling, recovery single-use & expiry, idempotency, double-click, simulate-fail, rate limit, recompute, domain-rule→422 regression |
 | E2E | Playwright | 1 spec × 2 viewports | full funnel in real Chromium on desktop + iPhone 12 viewport |
-| **Total** | | **47 + 2 e2e** | all green |
+| **Total** | | **58 + 2 e2e** | all green |
 
 ### Coverage scope & deliberate gaps
 **Why these scenarios** — they map 1:1 to the challenge's riskiest invariants: deterministic

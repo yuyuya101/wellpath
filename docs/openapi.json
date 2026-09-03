@@ -146,7 +146,7 @@
       },
       "SessionCreated": { "type": "object", "properties": { "sessionId": { "type": "string", "format": "uuid" }, "status": { "const": "in_progress" }, "accessExpiresAt": { "type": "string", "format": "date-time" } }, "required": ["sessionId", "status"] },
       "Session": { "type": "object", "properties": { "sessionId": { "type": "string", "format": "uuid" }, "status": { "enum": ["in_progress", "submitted", "deleted"] }, "steps": { "type": "array", "items": { "$ref": "#/components/schemas/StepSaved" } } }, "required": ["sessionId", "status", "steps"] },
-      "StepPatch": { "type": "object", "properties": { "stepKey": { "enum": ["basics", "goal", "activity", "condition"] }, "answer": { "type": "object", "additionalProperties": true }, "expectedRevision": { "type": "integer", "minimum": 1, "description": "Omit on first write; required afterwards for optimistic locking" } }, "required": ["stepKey", "answer"] },
+      "StepPatch": { "type": "object", "properties": { "stepKey": { "enum": ["basics", "goal", "activity", "condition"] }, "answer": { "type": "object", "additionalProperties": true, "description": "Partial draft of that step is accepted (the UI collects one step across several screens), but every supplied value must be well-typed/in-enum; completeness is enforced at submit. basics{sex,ageYears,heightCm,weightKg,bodyBuild?}, goal{goal?,targetWeightKg,pace?}, activity{activity,dailyMovement?,workoutPreferences?[],stairTolerance?}, condition{specialCondition,weightTendency?,focusAreas?[]}" }, "expectedRevision": { "type": "integer", "minimum": 1, "description": "Omit on first write; required afterwards for optimistic locking" } }, "required": ["stepKey", "answer"] },
       "StepSaved": { "type": "object", "properties": { "stepKey": { "type": "string" }, "revision": { "type": "integer" }, "rebased": { "type": "boolean" } }, "required": ["stepKey", "revision"] },
       "ResultView": {
         "type": "object",
@@ -162,8 +162,8 @@
           },
           "upgrade": { "type": "object", "description": "Present only for free; structured paywall CTA", "properties": { "required": { "type": "boolean" }, "productCode": { "type": "string" }, "endpoint": { "type": "string" }, "message": { "type": "string" } } },
           "entitlementExpiresAt": { "type": "string", "format": "date-time", "description": "Premium expiry; present only when access=full" },
-          "freeSummary": { "type": "object", "properties": { "bmi": { "type": "number" }, "bmiCategory": { "type": "string" }, "isHealthyTarget": { "type": "boolean" }, "weightDeltaKg": { "type": "number" }, "headline": { "type": "string" } } },
-          "payload": { "type": "object", "description": "Present only when access=full. Contains result{bmi,bmr,tdee,recommendedIntake,activityFactor,targetDateRangeWeeks,...}." }
+          "freeSummary": { "type": "object", "properties": { "bmi": { "type": "number" }, "bmiCategory": { "type": "string" }, "isHealthyTarget": { "type": "boolean" }, "weightDeltaKg": { "type": "number" }, "goal": { "enum": ["lose", "maintain", "gain"] }, "pace": { "enum": ["steady", "moderate", "fast"] }, "energyDirection": { "enum": ["deficit", "maintenance", "surplus"] }, "targetDateRangeWeeks": { "type": "object", "nullable": true, "properties": { "fastestWeeks": { "type": "integer" }, "steadyWeeks": { "type": "integer" } } }, "headline": { "type": "string" } }, "description": "Non-sensitive overview only; never contains bmr/tdee/recommendedIntake/activityFactor values" },
+          "payload": { "type": "object", "description": "Present only when access=full. result{goal,pace,energyDirection,energyAdjustment,bmi,bmr,tdee,recommendedIntake,activityFactor,weightDeltaKg,targetDateRangeWeeks,warnings}, plus profile (report-only answers) and deterministic recommendations[]." }
         },
         "required": ["access", "entitlementTier", "locked", "lockedFields"]
       },

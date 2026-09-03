@@ -16,7 +16,7 @@
 | T02 | 九表 schema + 迁移 | ✅ | schema.test 3 例；Neon 真实迁移成功 |
 | T03 | 权益/订阅/访问/恢复/支付/限流数据模型 | ✅ | 九表关系与唯一约束 |
 | T04 | Zod 契约（请求/领域/错误展平） | ✅ | 422 fieldErrors 用例 |
-| T05 | Mifflin 领域算法（冻结常量） | ✅ | domain 19 例，数值断言 |
+| T05 | Mifflin 领域算法（冻结常量）+ lose/maintain/gain 三方向与 pace | ✅ | domain 26 例，数值断言 |
 | T06 | 平台无关 Route Handler + RFC9457 | ✅ | 8 错误码 problem+json |
 | T07 | 会话创建/恢复、HttpOnly cookie | ✅ | api 10 例 |
 | T08 | 分步保存 + 乐观锁 revision | ✅ | 409 + currentRevision 用例 |
@@ -25,7 +25,7 @@
 | T11 | 30 天权益 + HMAC 单次恢复码 | ✅ | 单次/过期用例 |
 | T12 | 支付两态机 + 永久幂等 | ✅ | 双击一次权益/异参 409/重放不显码 |
 | T13 | DB 固定窗口限流 | ✅ | 第 11 次 429 |
-| T14 | RHF 四步问卷、进度、单位、自动保存/409 rebase、恢复 | ✅ | E2E 走通 |
+| T14 | 多屏引导问卷（3 板块 13 屏）、分段进度、响应式、自动保存/409 rebase、中断恢复 | ✅ | E2E 走通 |
 | T15 | 免费摘要/模拟支付/完整结果/恢复码仅一次 | ✅ | E2E 断言 2226 kcal + 恢复码 |
 | T16 | 改答重算，权益保留，重复提交幂等 | ✅ | flow 新增 1 例（TDEE 2726→2111） |
 | T17 | 移动/无障碍 | ✅ | focus-visible/skip link/viewport/radiogroup/44px/16px/reduced-motion |
@@ -39,7 +39,7 @@
 ## 质量门禁（本地实跑结果）
 - `tsc --noEmit`（strict + noUncheckedIndexedAccess）：**0 error**
 - `eslint .`：**0 error**
-- Vitest：**47/47 passed**（domain 19 + schema 3 + api 12 + flow 13）
+- Vitest：**58/58 passed**（domain 26 + schema 3 + api 13 + flow 16）
 - `next build`：**成功**，路由 `/`、`/assessment/[id]`、`/assessment/[id]/result`、`/recovery`、`/api/[[...route]]`
 - Playwright：**2/2 passed**（desktop 27.4s / mobile 27.9s，真实 Neon）
 - 依赖审计：0 high/critical；1 moderate（esbuild dev-server 提示，仅影响本地开发服务器，生产不暴露，可接受）
