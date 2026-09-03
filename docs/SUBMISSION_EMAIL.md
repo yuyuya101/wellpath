@@ -17,13 +17,13 @@
 **二、本地运行**
 ```bash
 pnpm install
-pnpm verify            # typecheck + lint + 47 个单测/集成测试 + 构建
+pnpm verify            # typecheck + lint + 58 个单测/集成测试 + 构建
 pnpm build && pnpm test:e2e   # 双视口端到端冒烟（需 .env，见 docs/DEPLOYMENT.md）
 ```
 
 **三、完成情况（对照任务矩阵 T01–T23）**
 - 三个里程碑 M1/M2/M3 全部达成，详见 `docs/ACCEPTANCE.md`；
-- 自动化测试：Vitest 47 个（领域/契约/API/业务闭环，含单步答案强校验拦截空枚举/缺字段、会员过期回退免费、锁定字段清单一致性等权限与输入边界）+ Playwright 1 条用例 × 桌面/移动双视口，全部通过；
+- 自动化测试：Vitest 58 个（领域/契约/API/业务闭环，含减重·维持·增重三方向与节奏、分屏部分草稿合法但非法值拦截、增重 BMI25 上限、会员过期回退免费、锁定字段清单一致性等权限与输入边界）+ Playwright 1 条用例 × 桌面/移动双视口，全部通过；
 - CI：GitHub Actions 三个 Job（静态质量、真实 Postgres 迁移、Chromium E2E）；
 - 关键工程点：提交原子事务、乐观锁、字段级 DTO 脱敏、支付永久幂等、
   HMAC 单次恢复码、数据库限流、RFC 9457 错误码、安全响应头与同源策略；
@@ -36,7 +36,7 @@ pnpm build && pnpm test:e2e   # 双视口端到端冒烟（需 .env，见 docs/D
   - 备用：`38cf4d4f-fa25-4c2e-aad0-fb78fbf3c9cc` / `e68w9jM04_fg7R0ZOVWPRXiEO8PNhUyXPj2X9oE5dXs`
   - 因访问基于 HttpOnly Cookie，无原始 Cookie 时用恢复码调 `POST /api/recovery/redeem`
     换取新 Cookie 后 `GET /api/assessments/{id}/result` 即见完整字段（恢复码单次有效，二次 401）；
-- 完整可重放 cURL（创建→四步保存→提交→免费结果→幂等支付→完整结果→恢复码）见 README “Reproduce the funnel & payment with cURL”；
+- 完整可重放 cURL（创建→分步保存→提交→免费结果→幂等支付→完整结果→恢复码）见 README “Reproduce the funnel & payment with cURL”；
 - 数据库 Schema 图（九表关系）见 `docs/DATABASE_SCHEMA.md`。
 
 **五、AI 使用声明**

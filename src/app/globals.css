@@ -376,11 +376,17 @@ h1 {
   right: 0;
   bottom: 0;
   background: linear-gradient(to top, var(--bg) 70%, rgba(251, 248, 241, 0));
-  padding: 18px 20px 22px;
+  padding: 18px 20px calc(22px + env(safe-area-inset-bottom));
   display: flex;
   gap: 12px;
   justify-content: center;
   z-index: 20;
+}
+/* The fixed bottom pill must stay tappable: hide the host badge overlay
+   that otherwise intercepts pointer events over the action bar on mobile. */
+#nl-badge-frame,
+iframe[id*='nl-badge'] {
+  display: none !important;
 }
 .action-bar .btn {
   max-width: var(--maxw);
