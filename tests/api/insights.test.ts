@@ -17,6 +17,7 @@ beforeEach(async () => {
 });
 afterEach(async () => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   globalThis.fetch = realFetch;
   await h.close();
 });
@@ -98,5 +99,27 @@ describe('T24 会员专属 AI 洞察', () => {
     expect(body.model).toBe('deepseek-r1:1.5b');
     expect(body.tips).toHaveLength(3);
     expect(body.tips[0]).toContain('2226');
+  });
+
+  it('production 且未配置 OLLAMA_BASE_URL -> 直接 rule-fallback，且不向本地模型发请求（线上不空等超时）', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    delete process.env.OLLAMA_BASE_URL;
+    const { sessionId, cookie } = await submittedSession();
+    await app.request('/api/pay', {
+      method: 'POST',
+      headers: { cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ sessionId, idempotencyKey: randomUUID(), productCode: 'wellpath_premium_30d' }),
+    });
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation((async () => new Response(JSON.stringify({ response: 'SHOULD NOT BE USED' }), { status: 200 })) as typeof fetch);
+
+    const res = await app.request(`/api/assessments/${sessionId}/insights`, { method: 'POST', headers: { cookie } });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.source).toBe('rule-fallback');
+    expect(body.tips.length).toBeGreaterThan(0);
+    // Hono app.request 不走全局 fetch；因此这里若有调用，只能是打向本地模型——必须为 0
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

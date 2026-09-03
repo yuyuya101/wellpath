@@ -61,18 +61,27 @@ export async function getAiInsights(db: Db, sessionId: string): Promise<AiInsigh
   const profile = payload.profile as FullProfile;
   const result = payload.result as HealthResult;
 
-  try {
-    const { text, model } = await askLocalOllama(buildPrompt(profile, result));
-    const tips = toTipList(text);
-    if (!tips.length) throw new Error('no tips parsed');
-    return { access: 'full', source: 'local-llm', model, tips, generatedAt: new Date().toISOString() };
-  } catch {
-    // 本地模型不可用（线上/未启动）：确定性规则建议兜底，保证可用。
-    return {
-      access: 'full',
-      source: 'rule-fallback',
-      tips: buildRecommendations(profile, result),
-      generatedAt: new Date().toISOString(),
-    };
+  // 只有「本地开发」或「显式配置了可达的 OLLAMA_BASE_URL」才尝试本地模型。
+  // 纯线上主机（NODE_ENV=production 且未配置）永远访问不到用户本机 127.0.0.1，
+  // 直接走确定性建议，避免连接被静默丢弃时让用户空等一个超时周期。
+  const llmEnabled = !!process.env.OLLAMA_BASE_URL || process.env.NODE_ENV !== 'production';
+
+  if (llmEnabled) {
+    try {
+      const { text, model } = await askLocalOllama(buildPrompt(profile, result));
+      const tips = toTipList(text);
+      if (!tips.length) throw new Error('no tips parsed');
+      return { access: 'full', source: 'local-llm', model, tips, generatedAt: new Date().toISOString() };
+    } catch {
+      // 本地模型不可用（未启动/超时/返回空）：落到下面的确定性规则建议。
+    }
   }
+
+  // 确定性规则建议兜底，保证功能永不硬失败。
+  return {
+    access: 'full',
+    source: 'rule-fallback',
+    tips: buildRecommendations(profile, result),
+    generatedAt: new Date().toISOString(),
+  };
 }

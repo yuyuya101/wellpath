@@ -21,7 +21,7 @@ RFC 9457 errors, automated tests at three levels and CI/CD on free tiers.
 | ORM | Drizzle ORM | SQL-transparent, typed migrations |
 | DB (prod) | PostgreSQL on Neon | Free, serverless Postgres |
 | DB (test) | PGlite (WASM) | Zero-install isolated DB per test |
-| Tests | Vitest (unit/integration) + Playwright (e2e) | 61 automated checks + dual-viewport smoke |
+| Tests | Vitest (unit/integration) + Playwright (e2e) | 62 automated checks + dual-viewport smoke |
 | Deploy | Netlify (OpenNext runtime) + Neon Postgres | $0 tier, no credit card, git-push deploys |
 
 ## Architecture
@@ -75,8 +75,11 @@ domain result is already authoritative. It builds a prompt from those computed v
 **local** Ollama model (default `deepseek-r1:1.5b` at `http://127.0.0.1:11434`) for natural-language
 tips, then returns `{ source: "local-llm", tips }`. When no local model is reachable (e.g. the
 deployed host) it transparently falls back to the deterministic rule-based recommendations and
-returns `source: "rule-fallback"`, so the feature can never hard-fail the result page. Override with
-`OLLAMA_BASE_URL` / `OLLAMA_MODEL`. Run locally: install Ollama, `ollama pull deepseek-r1:1.5b`,
+returns `source: "rule-fallback"`, so the feature can never hard-fail the result page. A production
+host with no `OLLAMA_BASE_URL` configured skips the local call entirely (it could never reach a
+user's laptop), so it answers immediately instead of waiting on a timeout; local `pnpm dev`
+(`NODE_ENV=development`) calls the model by default. Override with `OLLAMA_BASE_URL` /
+`OLLAMA_MODEL`. Run locally: install Ollama, `ollama pull deepseek-r1:1.5b`,
 keep `ollama serve` running, then `pnpm dev`.
 
 ## Commands
@@ -87,7 +90,7 @@ cp .env.example .env            # see docs/DEPLOYMENT.md; tests need NO .env DAT
 pnpm dev                        # local dev
 pnpm typecheck                  # tsc --noEmit (strict)
 pnpm lint                       # eslint
-pnpm test                       # Vitest: 61 unit/integration tests (PGlite)
+pnpm test                       # Vitest: 62 unit/integration tests (PGlite)
 pnpm build                      # production build
 pnpm test:e2e                   # Playwright dual-viewport smoke (run after build; needs DATABASE_URL)
 pnpm db:migrate                 # apply SQL migration to DATABASE_URL
@@ -106,8 +109,8 @@ pnpm verify                     # typecheck + lint + test + build
 | API integration | Vitest | 13 | session create/resume, cookie access, step optimistic lock, partial-draft acceptance vs empty-enum/typed-wrong rejection, validation/problem+json |
 | Business flow | Vitest | 16 | atomic submit/rollback, free-vs-full DTO gating incl. lockedFields/upgrade CTA, premium-expiry falls back to free, gain/maintain e2e + BMI25 ceiling, recovery single-use & expiry, idempotency, double-click, simulate-fail, rate limit, recompute, domain-rule→422 regression |
 | E2E | Playwright | 1 spec × 2 viewports | full funnel in real Chromium on desktop + iPhone 12 viewport |
-| Premium AI insights | Vitest | 3 | non-member -> 402 boundary, local-model unreachable -> rule-fallback (never hard-fails), local-model success -> parsed local-llm tips (fetch mocked, no real model needed in CI) |
-| **Total** | | **61 + 2 e2e** | all green |
+| Premium AI insights | Vitest | 4 | non-member -> 402 boundary, local-model unreachable -> rule-fallback (never hard-fails), local-model success -> parsed local-llm tips (fetch mocked), production-without-LLM skips the call entirely (no timeout wait) |
+| **Total** | | **62 + 2 e2e** | all green |
 
 ### Coverage scope & deliberate gaps
 **Why these scenarios** — they map 1:1 to the challenge's riskiest invariants: deterministic
