@@ -199,8 +199,9 @@ consumed/expired, just run the cURL sequence above to mint a fresh paid session.
 
 | sessionId | recovery code (single-use) | status |
 |---|---|---|
-| `f8192289-3392-4a70-821b-f49f2a90603a` | `TeZihYUllSWEIDBKlIK9Mh6HVxck3Z9UxgegwoIQCiE` | premium, paid |
-| `38cf4d4f-fa25-4c2e-aad0-fb78fbf3c9cc` | `e68w9jM04_fg7R0ZOVWPRXiEO8PNhUyXPj2X9oE5dXs` | premium, paid |
+| `2d9b2844-e8a4-4474-88d7-e8b7b5743b76` | `3mF-koWUV-Ce4NFYrBlNkcT2qRK2g-x7zXpXPmlErtA` | premium, paid (minted & verified 2026-09-03: free `access=free`/no payload -> after pay `access=full`, TDEE 2726 / intake 2226) |
+| `f8192289-3392-4a70-821b-f49f2a90603a` | `TeZihYUllSWEIDBKlIK9Mh6HVxck3Z9UxgegwoIQCiE` | premium, paid (backup) |
+| `38cf4d4f-fa25-4c2e-aad0-fb78fbf3c9cc` | `e68w9jM04_fg7R0ZOVWPRXiEO8PNhUyXPj2X9oE5dXs` | premium, paid (backup) |
 
 > Recovery path verified in production: `redeem` → 200 + fresh cookie → result `access=full`
 > (TDEE 2726); redeeming the same code again → 401 `RECOVERY_INVALID` (single-use holds).
