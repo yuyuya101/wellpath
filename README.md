@@ -19,7 +19,7 @@ RFC 9457 errors, automated tests at three levels and CI/CD on free tiers.
 | DB (prod) | PostgreSQL on Neon | Free, serverless Postgres |
 | DB (test) | PGlite (WASM) | Zero-install isolated DB per test |
 | Forms | react-hook-form | Uncontrolled, minimal re-renders |
-| Tests | Vitest (unit/integration) + Playwright (e2e) | 43 automated checks + dual-viewport smoke |
+| Tests | Vitest (unit/integration) + Playwright (e2e) | 44 automated checks + dual-viewport smoke |
 | Deploy | Render web service + cron-job.org keep-alive | No credit card |
 
 ## Architecture
@@ -62,7 +62,7 @@ cp .env.example .env            # see docs/DEPLOYMENT.md; tests need NO .env DAT
 pnpm dev                        # local dev
 pnpm typecheck                  # tsc --noEmit (strict)
 pnpm lint                       # eslint
-pnpm test                       # Vitest: 43 unit/integration tests (PGlite)
+pnpm test                       # Vitest: 44 unit/integration tests (PGlite)
 pnpm build                      # production build
 pnpm test:e2e                   # Playwright dual-viewport smoke (run after build; needs DATABASE_URL)
 pnpm db:migrate                 # apply SQL migration to DATABASE_URL
@@ -81,7 +81,7 @@ pnpm verify                     # typecheck + lint + test + build
 | API integration | Vitest | 10 | session create/resume, cookie access, step optimistic lock, validation/problem+json |
 | Business flow | Vitest | 11 | atomic submit/rollback, DTO gating, recovery single-use & expiry, idempotency, double-click, simulate-fail, rate limit, recompute |
 | E2E | Playwright | 1 spec × 2 viewports | full funnel in real Chromium on desktop + iPhone 12 viewport |
-| **Total** | | **43 + 2 e2e** | all green |
+| **Total** | | **44 + 2 e2e** | all green |
 
 ## API contract
 See [`docs/openapi.json`](docs/openapi.json) (OpenAPI 3.1). All errors are

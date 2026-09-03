@@ -7,7 +7,7 @@
 |---|---|---|---|
 | M1 | T01–T08 骨架/领域/会话 | ✅ | commit 3830e41，32 测试 + build |
 | M2 | T09–T15 免费→支付→解锁闭环 | ✅ | commit e0d63ef，flow 10 用例 + 前端可点 |
-| M3 | T16–T23 加固/测试/部署/交付 | ✅（部署待账号侧点击） | commit a84bdc4，43 测试 + 双视口 E2E |
+| M3 | T16–T23 加固/测试/部署/交付 | ✅ 已上线 Netlify（https://wellpa.netlify.app） | 44 测试 + 双视口 E2E；生产修复领域错误 500→422 |
 
 ## 任务逐项
 | 任务 | 内容 | 状态 | 验证方式 |
@@ -39,7 +39,7 @@
 ## 质量门禁（本地实跑结果）
 - `tsc --noEmit`（strict + noUncheckedIndexedAccess）：**0 error**
 - `eslint .`：**0 error**
-- Vitest：**43/43 passed**（domain 19 + schema 3 + api 10 + flow 11）
+- Vitest：**44/44 passed**（domain 19 + schema 3 + api 10 + flow 12）
 - `next build`：**成功**，路由 `/`、`/assessment/[id]`、`/assessment/[id]/result`、`/recovery`、`/api/[[...route]]`
 - Playwright：**2/2 passed**（desktop 27.4s / mobile 27.9s，真实 Neon）
 - 依赖审计：0 high/critical；1 moderate（esbuild dev-server 提示，仅影响本地开发服务器，生产不暴露，可接受）
