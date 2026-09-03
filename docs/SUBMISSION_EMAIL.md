@@ -10,9 +10,9 @@
 现提交如下材料。
 
 **一、在线地址**
-- 演示地址：`<Render 部署后的 https://wellpath-xxxx.onrender.com>`（部署后回填）
-- 健康检查：`<同上>/api/health`
-- 代码仓库：`<GitHub 仓库地址>`（如要求私有，可开放指定账号只读权限）
+- 演示地址：https://wellpa.netlify.app
+- 健康检查：https://wellpa.netlify.app/api/health
+- 代码仓库：https://github.com/yuyuya101/wellpath（如要求私有，可开放指定账号只读权限）
 
 **二、本地运行**
 ```bash
@@ -28,7 +28,7 @@ pnpm build && pnpm test:e2e   # 双视口端到端冒烟（需 .env，见 docs/D
 - 关键工程点：提交原子事务、乐观锁、字段级 DTO 脱敏、支付永久幂等、
   HMAC 单次恢复码、数据库限流、RFC 9457 错误码、安全响应头与同源策略；
 - 接口契约：`docs/openapi.json`（OpenAPI 3.1）；
-- 部署：Render + Neon 免费层，cron-job.org 保活，免信用卡，见 `docs/DEPLOYMENT.md`。
+- 部署：Netlify + Neon 免费层（免信用卡，函数按需启动、无休眠保活），见 `docs/DEPLOYMENT_NETLIFY.md`。
 
 **四、AI 使用声明**
 按要求如实说明 AI 协作边界，见 `docs/AI_USAGE.md`：AI 仅作结对编程与文档辅助，
@@ -36,7 +36,7 @@ pnpm build && pnpm test:e2e   # 双视口端到端冒烟（需 .env，见 docs/D
 
 **五、已知边界（主动声明）**
 支付为模拟实现，未接真实第三方；未做微服务拆分与完整移动端；
-免费实例存在冷启动，已用定时健康检查保活。
+免费层函数与 Neon 冷启动时首个请求可能略慢。
 
 如需补充材料或安排代码走查，我随时可以配合。谢谢！
 
