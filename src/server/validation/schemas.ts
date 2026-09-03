@@ -60,6 +60,7 @@ export const submitBodySchema = z.object({
 });
 
 export const payBodySchema = z.object({
+  sessionId: z.uuid(),
   idempotencyKey: z.uuid(),
   productCode: z.string().min(1).max(64),
   /** 仅非生产允许，用于覆盖失败分支 */

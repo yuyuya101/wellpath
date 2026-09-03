@@ -4,6 +4,7 @@ import type { Db } from '@/server/infrastructure/db/client';
 import { ProblemError, toProblemBody, ERROR_CODES } from './errors';
 import { logger } from './logger';
 import { assessmentsRoutes } from './routes/assessments';
+import { paymentRoutes } from './routes/payment';
 
 export interface AppDeps {
   db: Db;
@@ -52,6 +53,7 @@ export function createApp(deps: AppDeps) {
 
   // 业务路由
   app.route('/', assessmentsRoutes());
+  app.route('/', paymentRoutes());
 
   app.notFound((c) => {
     const body = toProblemBody('INVALID_REQUEST', 'Route not found', c.get('requestId'));
