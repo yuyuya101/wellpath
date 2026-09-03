@@ -39,7 +39,7 @@
 ## 质量门禁（本地实跑结果）
 - `tsc --noEmit`（strict + noUncheckedIndexedAccess）：**0 error**
 - `eslint .`：**0 error**
-- Vitest：**45/45 passed**（domain 19 + schema 3 + api 10 + flow 13）
+- Vitest：**47/47 passed**（domain 19 + schema 3 + api 12 + flow 13）
 - `next build`：**成功**，路由 `/`、`/assessment/[id]`、`/assessment/[id]/result`、`/recovery`、`/api/[[...route]]`
 - Playwright：**2/2 passed**（desktop 27.4s / mobile 27.9s，真实 Neon）
 - 依赖审计：0 high/critical；1 moderate（esbuild dev-server 提示，仅影响本地开发服务器，生产不暴露，可接受）

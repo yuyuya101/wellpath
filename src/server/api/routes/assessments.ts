@@ -16,13 +16,26 @@ import { clientSubject, consume } from '@/server/application/rateLimitService';
 import { assessmentSession } from '@/server/infrastructure/db/schema';
 import { eq } from 'drizzle-orm';
 import {
+  activityAnswerSchema,
+  basicsAnswerSchema,
+  conditionAnswerSchema,
   flattenZodError,
+  goalAnswerSchema,
   patchStepBodySchema,
   stepKeySchema,
   submitBodySchema,
+  type StepKey,
 } from '@/server/validation/schemas';
 
 const uuidParam = z.uuid();
+
+/** 每个步骤对应的强类型答案契约：单步保存即按步骤校验，非法/缺字段当场拒绝，脏数据不落库 */
+const STEP_ANSWER_SCHEMA = {
+  basics: basicsAnswerSchema,
+  goal: goalAnswerSchema,
+  activity: activityAnswerSchema,
+  condition: conditionAnswerSchema,
+} as const;
 
 function parseId(value: string): string {
   const r = uuidParam.safeParse(value);
@@ -102,7 +115,23 @@ export function assessmentsRoutes() {
     const token = getCookie(c, ACCESS_COOKIE);
     await assertAccess(c.var.db, id, token);
 
-    const result = await upsertStep(c.var.db, id, body.stepKey, body.answer, body.expectedRevision);
+    // 纵深防御：前端校验可被绕过，服务端必须按步骤再校验一次（类型/枚举/越界/缺字段）
+    const answerResult = STEP_ANSWER_SCHEMA[body.stepKey as StepKey].safeParse(body.answer);
+    if (!answerResult.success) {
+      throw new ProblemError(
+        'VALIDATION_FAILED',
+        `${body.stepKey} answer failed validation`,
+        flattenZodError(answerResult.error),
+      );
+    }
+
+    const result = await upsertStep(
+      c.var.db,
+      id,
+      body.stepKey,
+      answerResult.data as Record<string, unknown>,
+      body.expectedRevision,
+    );
     return c.json(result, 200);
   });
 

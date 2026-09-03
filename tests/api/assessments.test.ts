@@ -76,7 +76,7 @@ describe('T08 分步保存与乐观锁', () => {
     const first = await app.request(url, {
       method: 'PATCH',
       headers: { cookie, 'content-type': 'application/json' },
-      body: JSON.stringify({ stepKey: 'basics', answer: { sex: 'male', ageYears: 28 } }),
+      body: JSON.stringify({ stepKey: 'basics', answer: { sex: 'male', ageYears: 28, heightCm: 175, weightKg: 80 } }),
     });
     expect(first.status).toBe(200);
     expect(await first.json()).toMatchObject({ revision: 1 });
@@ -86,7 +86,7 @@ describe('T08 分步保存与乐观锁', () => {
       headers: { cookie, 'content-type': 'application/json' },
       body: JSON.stringify({
         stepKey: 'basics',
-        answer: { sex: 'male', ageYears: 29 },
+        answer: { sex: 'male', ageYears: 29, heightCm: 175, weightKg: 80 },
         expectedRevision: 1,
       }),
     });
@@ -166,5 +166,37 @@ describe('T08 分步保存与乐观锁', () => {
       body: JSON.stringify({ stepKey: 'goal', answer: {} }),
     });
     expect(res.status).toBe(422);
+  });
+
+  it('单步强校验：activity 传空枚举 -> 422 且带字段错误（脏数据不落库）', async () => {
+    const { sessionId, cookie } = await createSession();
+    const res = await app.request(`/api/assessments/${sessionId}/steps/activity`, {
+      method: 'PATCH',
+      headers: { cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ stepKey: 'activity', answer: { activity: '' } }),
+    });
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.code).toBe('VALIDATION_FAILED');
+    expect(body.fieldErrors.activity).toBeTruthy();
+    // 被拒绝后该步骤不应存在：恢复时 steps 仍为空
+    const check = await app.request(`/api/assessments/${sessionId}`, { headers: { cookie } });
+    expect((await check.json()).steps).toEqual([]);
+  });
+
+  it('单步强校验：basics 缺字段/数字传字符串 -> 422', async () => {
+    const { sessionId, cookie } = await createSession();
+    const res = await app.request(`/api/assessments/${sessionId}/steps/basics`, {
+      method: 'PATCH',
+      headers: { cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        stepKey: 'basics',
+        answer: { sex: 'male', ageYears: '28', heightCm: 175 }, // weightKg 缺失、age 为字符串
+      }),
+    });
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.fieldErrors.ageYears).toBeTruthy();
+    expect(body.fieldErrors.weightKg).toBeTruthy();
   });
 });

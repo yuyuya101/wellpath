@@ -19,7 +19,7 @@ RFC 9457 errors, automated tests at three levels and CI/CD on free tiers.
 | DB (prod) | PostgreSQL on Neon | Free, serverless Postgres |
 | DB (test) | PGlite (WASM) | Zero-install isolated DB per test |
 | Forms | react-hook-form | Uncontrolled, minimal re-renders |
-| Tests | Vitest (unit/integration) + Playwright (e2e) | 45 automated checks + dual-viewport smoke |
+| Tests | Vitest (unit/integration) + Playwright (e2e) | 47 automated checks + dual-viewport smoke |
 | Deploy | Netlify (OpenNext runtime) + Neon Postgres | $0 tier, no credit card, git-push deploys |
 
 ## Architecture
@@ -62,7 +62,7 @@ cp .env.example .env            # see docs/DEPLOYMENT.md; tests need NO .env DAT
 pnpm dev                        # local dev
 pnpm typecheck                  # tsc --noEmit (strict)
 pnpm lint                       # eslint
-pnpm test                       # Vitest: 45 unit/integration tests (PGlite)
+pnpm test                       # Vitest: 47 unit/integration tests (PGlite)
 pnpm build                      # production build
 pnpm test:e2e                   # Playwright dual-viewport smoke (run after build; needs DATABASE_URL)
 pnpm db:migrate                 # apply SQL migration to DATABASE_URL
@@ -78,10 +78,10 @@ pnpm verify                     # typecheck + lint + test + build
 |---|---|---|---|
 | Domain unit | Vitest | 19 | Mifflin formula, BMI categories, deficit/floor, timeline rounding, protected cases (frozen constants) |
 | Schema | Vitest | 3 | nine-table relations & constraints |
-| API integration | Vitest | 10 | session create/resume, cookie access, step optimistic lock, validation/problem+json |
+| API integration | Vitest | 12 | session create/resume, cookie access, step optimistic lock, per-step answer validation rejects empty enum/missing/typed-wrong fields, validation/problem+json |
 | Business flow | Vitest | 13 | atomic submit/rollback, free-vs-full DTO gating incl. lockedFields/upgrade CTA, premium-expiry falls back to free, recovery single-use & expiry, idempotency, double-click, simulate-fail, rate limit, recompute, domain-rule→422 regression |
 | E2E | Playwright | 1 spec × 2 viewports | full funnel in real Chromium on desktop + iPhone 12 viewport |
-| **Total** | | **45 + 2 e2e** | all green |
+| **Total** | | **47 + 2 e2e** | all green |
 
 ### Coverage scope & deliberate gaps
 **Why these scenarios** — they map 1:1 to the challenge's riskiest invariants: deterministic

@@ -51,7 +51,7 @@ export function AssessmentFlow({ sessionId, editMode = false }: { sessionId: str
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [fatal, setFatal] = useState<string | null>(null);
 
-  const { register, handleSubmit, watch, reset, setValue, trigger, formState } = useForm<FormValues>({
+  const { register, handleSubmit, watch, reset, setValue, trigger, setError, clearErrors, formState } = useForm<FormValues>({
     defaultValues: DEFAULTS,
     // 分步条件渲染会卸载非当前步字段，显式保留已填值，避免跨步丢失
     shouldUnregister: false,
@@ -117,6 +117,15 @@ export function AssessmentFlow({ sessionId, editMode = false }: { sessionId: str
   }
 
   async function next(v: FormValues) {
+    // 自定义按钮字段未挂 RHF 规则，trigger 会对无规则字段放行，这里显式做必选拦截
+    if (stepKey === 'basics' && v.sex === '') {
+      setError('sex', { type: 'required', message: 'Please select' });
+      return;
+    }
+    if (stepKey === 'activity' && v.activity === '') {
+      setError('activity', { type: 'required', message: 'Please select' });
+      return;
+    }
     const valid = await trigger(
       stepKey === 'basics'
         ? ['sex', 'ageYears', 'heightCm', 'weightKg']
@@ -205,7 +214,7 @@ export function AssessmentFlow({ sessionId, editMode = false }: { sessionId: str
             <div role="radiogroup" aria-label="Biological sex" style={{ display: 'flex', gap: 10, marginTop: 6 }}>
               {(['male', 'female'] as const).map((s) => (
                 <button type="button" key={s} role="radio" aria-checked={values.sex === s}
-                  onClick={() => setValue('sex', s, { shouldValidate: true })}
+                  onClick={() => { setValue('sex', s, { shouldValidate: true }); clearErrors('sex'); }}
                   style={{ flex: 1, padding: 12, borderRadius: 8, minHeight: 44,
                     border: values.sex === s ? '2px solid var(--accent)' : '1px solid #d0d5dd',
                     background: values.sex === s ? 'rgba(47,125,107,.08)' : '#fff', textTransform: 'capitalize' }}>
@@ -251,7 +260,7 @@ export function AssessmentFlow({ sessionId, editMode = false }: { sessionId: str
           <section role="radiogroup" aria-label="Activity level">
             {ACTIVITIES.map((a) => (
               <button type="button" key={a.value} role="radio" aria-checked={values.activity === a.value}
-                onClick={() => setValue('activity', a.value, { shouldValidate: true })}
+                onClick={() => { setValue('activity', a.value, { shouldValidate: true }); clearErrors('activity'); }}
                 style={{ display: 'block', width: '100%', textAlign: 'left', padding: 14, marginTop: 10, borderRadius: 10, minHeight: 44,
                   border: values.activity === a.value ? '2px solid var(--accent)' : '1px solid #d0d5dd',
                   background: values.activity === a.value ? 'rgba(47,125,107,.08)' : '#fff' }}>

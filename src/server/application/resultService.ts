@@ -11,7 +11,7 @@ import {
   entitlement,
 } from '@/server/infrastructure/db/schema';
 import { assess, HealthDomainError, type HealthResult } from '@/server/domain/health/assessment';
-import { fullProfileSchema, type FullProfile, type StepKey } from '@/server/validation/schemas';
+import { fullProfileSchema, flattenZodError, type FullProfile, type StepKey } from '@/server/validation/schemas';
 import { ProblemError } from '@/server/api/errors';
 import { nowTs, isoTs } from '@/server/infrastructure/db/time';
 
@@ -34,7 +34,13 @@ export function assembleProfile(stepRows: Array<{ stepKey: string; answer: unkno
   };
   const parsed = fullProfileSchema.safeParse(merged);
   if (!parsed.success) {
-    throw new ProblemError('VALIDATION_FAILED', 'assembled profile failed validation');
+    // 带上具体字段错误，前端可据此跳回对应步骤；正常路径下单步强校验已先行拦截，
+    // 这里是对历史脏数据/直连接口的最后一道防线。
+    throw new ProblemError(
+      'VALIDATION_FAILED',
+      'assembled profile failed validation',
+      flattenZodError(parsed.error),
+    );
   }
   return parsed.data;
 }
