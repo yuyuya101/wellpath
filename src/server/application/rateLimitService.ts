@@ -2,10 +2,11 @@
  * DB 固定窗口限流（T13）：计数落 rate_counter，无内存计数（多实例一致）。
  * 窗口按分钟对齐；超限抛 429。
  */
-import { sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import type { Db } from '@/server/infrastructure/db/client';
 import { rateCounter, type RateScope } from '@/server/infrastructure/db/schema';
 import { ProblemError } from '@/server/api/errors';
+import { isoTs } from '@/server/infrastructure/db/time';
 
 export const RATE_LIMITS: Record<RateScope, number> = {
   create_session: Number(process.env.RATE_LIMIT_SESSION_RPM ?? 10),
@@ -25,7 +26,7 @@ export async function consume(
   now = new Date(),
 ): Promise<number> {
   const limit = RATE_LIMITS[scope];
-  const windowStart = minuteWindow(now);
+  const windowStart = isoTs(minuteWindow(now));
 
   // upsert：存在则 count+1
   await db
@@ -40,8 +41,11 @@ export async function consume(
     .select()
     .from(rateCounter)
     .where(
-      sql`${rateCounter.scope} = ${scope} AND ${rateCounter.subject} = ${subject}
-          AND ${rateCounter.windowStart} = ${windowStart}`,
+      and(
+        eq(rateCounter.scope, scope),
+        eq(rateCounter.subject, subject),
+        eq(rateCounter.windowStart, windowStart),
+      ),
     );
   const used = row?.count ?? 0;
   if (used > limit) {

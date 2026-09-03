@@ -12,6 +12,7 @@ import {
   entitlement,
 } from '@/server/infrastructure/db/schema';
 import { ProblemError } from '@/server/api/errors';
+import { nowTs, isoTs } from '@/server/infrastructure/db/time';
 import type { StepKey } from '@/server/validation/schemas';
 
 export const ACCESS_COOKIE = 'wellpath_sid';
@@ -43,7 +44,7 @@ export async function createSession(db: Db): Promise<CreatedSession> {
   await db.insert(accessSession).values({
     tokenHash: sha256(accessToken),
     assessmentSessionId: s.id,
-    expiresAt: accessExpiresAt,
+    expiresAt: isoTs(accessExpiresAt),
   });
 
   return { sessionId: s.id, accessToken, accessExpiresAt };
@@ -140,7 +141,7 @@ export async function upsertStep(
 
   const [updated] = await db
     .update(assessmentStep)
-    .set({ answer, revision: existing.revision + 1, updatedAt: new Date() })
+    .set({ answer, revision: existing.revision + 1, updatedAt: nowTs() })
     .where(
       and(
         eq(assessmentStep.sessionId, sessionId),

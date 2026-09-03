@@ -1,0 +1,27 @@
+# Render Blueprint（ADR-08 / F-12：免信用卡，GitHub 登录部署）
+# Render 控制台 New + -> Blueprint，选中本仓库即可读取本文件。
+services:
+  - type: web
+    name: wellpath
+    runtime: node
+    plan: free
+    region: singapore # 与 Neon ap-southeast-1 同区域，降低 DB 延迟
+    # 1) 装 pnpm（与 packageManager 对齐）2) 装依赖 3) 迁移数据库 4) 构建
+    buildCommand: npm i -g pnpm@11.25.0 && pnpm install --frozen-lockfile && pnpm db:migrate && pnpm build
+    startCommand: pnpm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # 以下两项为密钥，不在仓库存储，在 Render 控制台 Environment 填写（sync:false）：
+      # DATABASE_URL        = Neon 直连连接串（非 -pooler 端点）
+      # RECOVERY_HMAC_KEY   = 32 字节随机十六进制（恢复码 HMAC 密钥）
+      - key: DATABASE_URL
+        sync: false
+      - key: RECOVERY_HMAC_KEY
+        sync: false
+      - key: RATE_LIMIT_SESSION_RPM
+        value: '10'
+      - key: RATE_LIMIT_PAY_RPM
+        value: '5'

@@ -222,3 +222,48 @@ describe('T13 DB 固定窗口限流', () => {
     expect((await json(last!)).code).toBe('RATE_LIMITED');
   }, 30000);
 });
+
+describe('T16 修改重算', () => {
+  it('改活动水平后 recalculate 覆盖结果；普通重复提交不重算；权益保留', async () => {
+    const { sessionId, cookie } = await fullSteps();
+    await submit(sessionId, cookie);
+
+    // 首次结果 moderate -> TDEE 2726
+    let r = await app.request(`/api/assessments/${sessionId}/result`, { headers: { cookie } });
+    let body = await json(r);
+    // 免费看不到 tdee，先支付
+    await app.request('/api/pay', {
+      method: 'POST', headers: { cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ sessionId, idempotencyKey: randomUUID(), productCode: 'p' }),
+    });
+    r = await app.request(`/api/assessments/${sessionId}/result`, { headers: { cookie } });
+    body = await json(r);
+    expect(body.payload.result.tdee).toBe(2726);
+
+    // 修改 activity: moderate -> sedentary（带 revision=1）
+    const patch = await app.request(`/api/assessments/${sessionId}/steps/activity`, {
+      method: 'PATCH', headers: { cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ stepKey: 'activity', answer: { activity: 'sedentary' }, expectedRevision: 1 }),
+    });
+    expect(patch.status).toBe(200);
+
+    // 不带 recalculate 的重复提交 -> 不重算
+    const dup = await submit(sessionId, cookie);
+    expect((await json(dup)).recomputed).toBe(false);
+
+    // 带 recalculate=true -> 重算
+    const recalc = await app.request(`/api/assessments/${sessionId}/submit`, {
+      method: 'POST', headers: { cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ recalculate: true }),
+    });
+    expect(recalc.status).toBe(200);
+    expect(await json(recalc)).toMatchObject({ recomputed: true });
+
+    // 结果更新：sedentary TDEE = round(1758.75*1.2)=2111；且权益仍 premium
+    r = await app.request(`/api/assessments/${sessionId}/result`, { headers: { cookie } });
+    body = await json(r);
+    expect(body.access).toBe('full');
+    expect(body.payload.result.activityFactor).toBe(1.2);
+    expect(body.payload.result.tdee).toBe(2111);
+  });
+});

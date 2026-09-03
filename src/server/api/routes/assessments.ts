@@ -19,6 +19,7 @@ import {
   flattenZodError,
   patchStepBodySchema,
   stepKeySchema,
+  submitBodySchema,
 } from '@/server/validation/schemas';
 
 const uuidParam = z.uuid();
@@ -105,13 +106,19 @@ export function assessmentsRoutes() {
     return c.json(result, 200);
   });
 
-  // 提交（原子事务；重复提交不重算）
+  // 提交（原子事务；重复提交不重算，recalculate=true 改答后重算）
   r.post('/assessments/:id/submit', async (c) => {
     const id = parseId(c.req.param('id'));
     await getSession(c.var.db, id);
     const token = getCookie(c, ACCESS_COOKIE);
     await assertAccess(c.var.db, id, token);
-    const outcome = await submitAssessment(c.var.db, id);
+    let recalculate = false;
+    const text = await c.req.text();
+    if (text) {
+      const parsed = submitBodySchema.safeParse(JSON.parse(text));
+      if (parsed.success) recalculate = parsed.data.recalculate ?? false;
+    }
+    const outcome = await submitAssessment(c.var.db, id, recalculate);
     return c.json(outcome, 200);
   });
 

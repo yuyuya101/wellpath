@@ -41,6 +41,8 @@ export function getProductionDb(): PostgresJsDatabase<typeof schema> {
   if (prodDb) return prodDb;
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error('DATABASE_URL is not set');
+  // Render 为长驻 Node 服务，使用 Neon 直连端点（非 -pooler）：标准扩展协议，
+  // 支持 prepared statement 与 Date 参数；max:1 单连接避免 serverless 分支数占用。
   prodClient = postgres(url, { max: 1, onnotice: () => {} });
   prodDb = drizzlePostgres(prodClient, { schema });
   return prodDb;

@@ -57,6 +57,8 @@ export type PatchStepBody = z.infer<typeof patchStepBodySchema>;
 export const submitBodySchema = z.object({
   /** 幂等防重复提交，可选；后端同时以 session 状态兜底 */
   clientToken: z.string().uuid().optional(),
+  /** 已提交后改答重算（T16）；缺省重复提交不重算 */
+  recalculate: z.boolean().optional(),
 });
 
 export const payBodySchema = z.object({

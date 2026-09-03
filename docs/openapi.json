@@ -1,0 +1,165 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "WellPath API",
+    "version": "0.1.0",
+    "description": "Health assessment subscription funnel. Errors follow RFC 9457 (application/problem+json). Access is bound to an HttpOnly same-site cookie issued at session creation."
+  },
+  "servers": [{ "url": "https://{host}", "variables": { "host": { "default": "localhost:3000" } } } ],
+  "tags": [
+    { "name": "system" },
+    { "name": "assessment" },
+    { "name": "billing" }
+  ],
+  "paths": {
+    "/api/health": {
+      "get": {
+        "tags": ["system"],
+        "summary": "Liveness + DB ping (also used by cron keep-alive)",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "status": { "const": "ok" }, "db": { "enum": ["up", "down"] }, "version": { "type": "string" } }, "required": ["status", "db"] } } }
+          }
+        }
+      }
+    },
+    "/api/assessments": {
+      "post": {
+        "tags": ["assessment"],
+        "summary": "Create a session, free entitlement and 24h access cookie",
+        "responses": {
+          "201": { "description": "Created; Set-Cookie: wellpath_sid", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SessionCreated" } } } },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/Internal" }
+        }
+      }
+    },
+    "/api/assessments/{id}": {
+      "get": {
+        "tags": ["assessment"],
+        "summary": "Resume a session (steps + revisions)",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": {
+          "200": { "description": "Session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Session" } } } },
+          "400": { "$ref": "#/components/responses/Invalid" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "delete": {
+        "tags": ["assessment"],
+        "summary": "Hard delete a session and all cascaded rows (GDPR-style erasure)",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": {
+          "200": { "description": "Deleted" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/assessments/{id}/steps/{stepKey}": {
+      "patch": {
+        "tags": ["assessment"],
+        "summary": "Upsert one step answer with optimistic locking",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "stepKey", "in": "path", "required": true, "schema": { "enum": ["basics", "goal", "activity", "condition"] } }
+        ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StepPatch" } } } },
+        "responses": {
+          "200": { "description": "Saved", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StepSaved" } } } },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "422": { "$ref": "#/components/responses/Validation" }
+        }
+      }
+    },
+    "/api/assessments/{id}/submit": {
+      "post": {
+        "tags": ["assessment"],
+        "summary": "Atomically assemble, validate, compute and persist the result. Repeated submit is idempotent; recalculate=true recomputes after editing.",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "clientToken": { "type": "string", "format": "uuid" }, "recalculate": { "type": "boolean", "default": false } } } } } },
+        "responses": {
+          "200": { "description": "Submitted", "content": { "application/json": { "schema": { "type": "object", "properties": { "sessionId": { "type": "string" }, "recomputed": { "type": "boolean" }, "kind": { "enum": ["complete", "protected"] } }, "required": ["sessionId", "recomputed", "kind"] } } } },
+          "422": { "$ref": "#/components/responses/Validation" }
+        }
+      }
+    },
+    "/api/assessments/{id}/result": {
+      "get": {
+        "tags": ["assessment"],
+        "summary": "Result DTO gated by entitlement. Free returns only freeSummary + locked=true; premium returns full payload.",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": {
+          "200": { "description": "Free or full DTO", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ResultView" } } } },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/pay": {
+      "post": {
+        "tags": ["billing"],
+        "summary": "Simulated payment. Idempotency-Key permanent dedupe; same key diff payload -> 409. Grants 30d premium and one-time recovery code.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PayRequest" } } } },
+        "responses": {
+          "200": { "description": "Paid (or replayed). recoveryCode is null on replay.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PayResult" } } } },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "422": { "$ref": "#/components/responses/Validation" },
+          "429": { "$ref": "#/components/responses/RateLimited" }
+        }
+      }
+    },
+    "/api/recovery/redeem": {
+      "post": {
+        "tags": ["billing"],
+        "summary": "Redeem a single-use recovery code; issues a fresh 24h access cookie",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["recoveryCode"], "properties": { "recoveryCode": { "type": "string", "minLength": 16 } } } } } },
+        "responses": {
+          "200": { "description": "Redeemed; Set-Cookie" },
+          "401": { "$ref": "#/components/responses/RecoveryInvalid" }
+        }
+      }
+    }
+  },
+  "components": {
+    "responses": {
+      "Invalid": { "description": "Bad request", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+      "RecoveryInvalid": { "description": "Recovery code unknown, used or expired", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+      "NotFound": { "description": "Session not found", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+      "Conflict": { "description": "Optimistic-lock or idempotency conflict; body.fieldErrors.currentRevision carries server revision", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+      "Validation": { "description": "Schema/business validation failed with fieldErrors", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+      "RateLimited": { "description": "Fixed-window rate exceeded; Retry-After", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+      "Internal": { "description": "Internal error (no stack leaked)", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } }
+    },
+    "schemas": {
+      "Problem": {
+        "type": "object",
+        "properties": {
+          "type": { "type": "string" },
+          "title": { "type": "string" },
+          "status": { "type": "integer" },
+          "code": { "enum": ["INVALID_REQUEST", "RECOVERY_INVALID", "SESSION_NOT_FOUND", "STEP_CONFLICT", "PAYMENT_IDEMPOTENT_MISMATCH", "VALIDATION_FAILED", "RATE_LIMITED", "INTERNAL_ERROR"] },
+          "detail": { "type": "string" },
+          "requestId": { "type": "string" },
+          "fieldErrors": { "type": "object", "additionalProperties": { "type": "array", "items": { "type": "string" } } }
+        },
+        "required": ["code", "status"]
+      },
+      "SessionCreated": { "type": "object", "properties": { "sessionId": { "type": "string", "format": "uuid" }, "status": { "const": "in_progress" }, "accessExpiresAt": { "type": "string", "format": "date-time" } }, "required": ["sessionId", "status"] },
+      "Session": { "type": "object", "properties": { "sessionId": { "type": "string", "format": "uuid" }, "status": { "enum": ["in_progress", "submitted", "deleted"] }, "steps": { "type": "array", "items": { "$ref": "#/components/schemas/StepSaved" } } }, "required": ["sessionId", "status", "steps"] },
+      "StepPatch": { "type": "object", "properties": { "stepKey": { "enum": ["basics", "goal", "activity", "condition"] }, "answer": { "type": "object", "additionalProperties": true }, "expectedRevision": { "type": "integer", "minimum": 1, "description": "Omit on first write; required afterwards for optimistic locking" } }, "required": ["stepKey", "answer"] },
+      "StepSaved": { "type": "object", "properties": { "stepKey": { "type": "string" }, "revision": { "type": "integer" }, "rebased": { "type": "boolean" } }, "required": ["stepKey", "revision"] },
+      "ResultView": {
+        "type": "object",
+        "properties": {
+          "access": { "enum": ["free", "full", "protected"] },
+          "locked": { "type": "boolean" },
+          "freeSummary": { "type": "object", "properties": { "bmi": { "type": "number" }, "bmiCategory": { "type": "string" }, "isHealthyTarget": { "type": "boolean" }, "weightDeltaKg": { "type": "number" }, "headline": { "type": "string" } } },
+          "payload": { "type": "object", "description": "Present only when access=full. Contains result{bmi,bmr,tdee,recommendedIntake,activityFactor,targetDateRangeWeeks,...}." }
+        },
+        "required": ["access"]
+      },
+      "PayRequest": { "type": "object", "properties": { "sessionId": { "type": "string", "format": "uuid" }, "idempotencyKey": { "type": "string", "format": "uuid" }, "productCode": { "type": "string", "default": "wellpath_premium_30d" }, "simulate": { "enum": ["fail"], "description": "Non-production failure injection" } }, "required": ["sessionId", "idempotencyKey", "productCode"] },
+      "PayResult": { "type": "object", "properties": { "status": { "enum": ["paid", "failed", "replayed"] }, "replayed": { "type": "boolean" }, "subscriptionId": { "type": "string" }, "recoveryCode": { "type": "string", "nullable": true, "description": "Returned only once, on the first successful payment" }, "premiumExpiresAt": { "type": "string", "format": "date-time", "nullable": true } }, "required": ["status", "replayed", "recoveryCode"] }
+    }
+  }
+}

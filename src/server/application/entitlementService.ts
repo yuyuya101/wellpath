@@ -18,6 +18,7 @@ import {
   RECOVERY_TTL_MS,
 } from '@/server/domain/recovery';
 import { ACCESS_COOKIE, sha256 } from './assessmentService';
+import { nowTs, isoTs } from '@/server/infrastructure/db/time';
 
 export const SUBSCRIPTION_DAYS = 30;
 const ACCESS_TTL_MS = 24 * 60 * 60 * 1000;
@@ -52,8 +53,8 @@ export async function grantPremium(
         status: 'active',
         productCode,
         externalRef,
-        startedAt: now,
-        expiresAt: premiumExpiresAt,
+        startedAt: isoTs(now),
+        expiresAt: isoTs(premiumExpiresAt),
       })
       .returning();
 
@@ -68,8 +69,8 @@ export async function grantPremium(
         .set({
           tier: 'premium',
           source: 'payment',
-          startedAt: now,
-          expiresAt: new Date(base.getTime() + SUBSCRIPTION_DAYS * 24 * 60 * 60 * 1000),
+          startedAt: isoTs(now),
+          expiresAt: isoTs(new Date(base.getTime() + SUBSCRIPTION_DAYS * 24 * 60 * 60 * 1000)),
         })
         .where(eq(entitlement.sessionId, sessionId));
     } else {
@@ -77,8 +78,8 @@ export async function grantPremium(
         sessionId,
         tier: 'premium',
         source: 'payment',
-        startedAt: now,
-        expiresAt: premiumExpiresAt,
+        startedAt: isoTs(now),
+        expiresAt: isoTs(premiumExpiresAt),
       });
     }
 
@@ -86,7 +87,7 @@ export async function grantPremium(
       sessionId,
       tokenHash: hashRecoveryCode(recoveryCode),
       used: false,
-      expiresAt: recoveryExpiresAt,
+      expiresAt: isoTs(recoveryExpiresAt),
     });
 
     return {
@@ -110,7 +111,7 @@ export async function redeemRecoveryCode(db: Db, code: string): Promise<RedeemRe
   const [token] = await db
     .select()
     .from(recoveryToken)
-    .where(and(eq(recoveryToken.tokenHash, tokenHash), gt(recoveryToken.expiresAt, new Date())));
+    .where(and(eq(recoveryToken.tokenHash, tokenHash), gt(recoveryToken.expiresAt, nowTs())));
 
   if (!token || token.used) {
     throw problem401();
@@ -124,7 +125,7 @@ export async function redeemRecoveryCode(db: Db, code: string): Promise<RedeemRe
     // 单次：用条件更新兜底并发重放（WHERE used=false）
     const claimed = await tx
       .update(recoveryToken)
-      .set({ used: true, consumedAt: now })
+      .set({ used: true, consumedAt: isoTs(now) })
       .where(and(eq(recoveryToken.id, token.id), eq(recoveryToken.used, false)))
       .returning();
     if (claimed.length === 0) throw problem401();
@@ -132,7 +133,7 @@ export async function redeemRecoveryCode(db: Db, code: string): Promise<RedeemRe
     await tx.insert(accessSession).values({
       tokenHash: sha256(accessToken),
       assessmentSessionId: token.sessionId,
-      expiresAt: accessExpiresAt,
+      expiresAt: isoTs(accessExpiresAt),
     });
   });
 

@@ -41,7 +41,7 @@ const DEFAULTS: FormValues = {
   specialCondition: 'none',
 };
 
-export function AssessmentFlow({ sessionId }: { sessionId: string }) {
+export function AssessmentFlow({ sessionId, editMode = false }: { sessionId: string; editMode?: boolean }) {
   const router = useRouter();
   const [stepIndex, setStepIndex] = useState(0);
   const [system, setSystem] = useState<UnitSystem>('metric');
@@ -50,8 +50,10 @@ export function AssessmentFlow({ sessionId }: { sessionId: string }) {
   const [submitting, setSubmitting] = useState(false);
   const [fatal, setFatal] = useState<string | null>(null);
 
-  const { register, handleSubmit, watch, reset, trigger, formState } = useForm<FormValues>({
+  const { register, handleSubmit, watch, reset, setValue, trigger, formState } = useForm<FormValues>({
     defaultValues: DEFAULTS,
+    // 分步条件渲染会卸载非当前步字段，显式保留已填值，避免跨步丢失
+    shouldUnregister: false,
   });
   const values = watch();
 
@@ -60,7 +62,7 @@ export function AssessmentFlow({ sessionId }: { sessionId: string }) {
     api
       .getSession(sessionId)
       .then((s) => {
-        if (s.status === 'submitted') {
+        if (s.status === 'submitted' && !editMode) {
           router.replace(`/assessment/${sessionId}/result`);
           return;
         }
@@ -75,7 +77,7 @@ export function AssessmentFlow({ sessionId }: { sessionId: string }) {
         setRevisions(rev);
       })
       .catch((e) => setFatal(e instanceof Error ? e.message : 'failed to load'));
-  }, [sessionId, reset, router]);
+  }, [sessionId, reset, router, editMode]);
 
   const stepKey = STEPS[stepIndex]!.key;
   const progress = useMemo(() => ((stepIndex + 1) / STEPS.length) * 100, [stepIndex]);
@@ -132,7 +134,7 @@ export function AssessmentFlow({ sessionId }: { sessionId: string }) {
     setSubmitting(true);
     try {
       await persist('condition', answerFor('condition', v));
-      await api.submit(sessionId);
+      await api.submit(sessionId, editMode);
       router.push(`/assessment/${sessionId}/result`);
     } catch (e) {
       setFatal(e instanceof Error ? e.message : 'submit failed');
@@ -180,10 +182,10 @@ export function AssessmentFlow({ sessionId }: { sessionId: string }) {
         {stepKey === 'basics' && (
           <section>
             <label style={labelStyle}>Biological sex</label>
-            <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
+            <div role="radiogroup" aria-label="Biological sex" style={{ display: 'flex', gap: 10, marginTop: 6 }}>
               {(['male', 'female'] as const).map((s) => (
-                <button type="button" key={s}
-                  onClick={() => register('sex').onChange({ target: { name: 'sex', value: s } })}
+                <button type="button" key={s} role="radio" aria-checked={values.sex === s}
+                  onClick={() => setValue('sex', s, { shouldValidate: true })}
                   style={{ flex: 1, padding: 12, borderRadius: 8, minHeight: 44,
                     border: values.sex === s ? '2px solid var(--accent)' : '1px solid #d0d5dd',
                     background: values.sex === s ? 'rgba(47,125,107,.08)' : '#fff', textTransform: 'capitalize' }}>
@@ -194,20 +196,20 @@ export function AssessmentFlow({ sessionId }: { sessionId: string }) {
             {formState.errors.sex && <Err msg="Please select" />}
 
             <label style={labelStyle}>Age (years)</label>
-            <input type="number" style={inputStyle} inputMode="numeric"
+            <input type="number" style={inputStyle} inputMode="numeric" aria-label="Age in years"
               {...register('ageYears', { required: true, valueAsNumber: true, min: 18, max: 100 })} />
             {formState.errors.ageYears && <Err msg="Age must be 18–100" />}
 
             <label style={labelStyle}>Height ({system === 'metric' ? 'cm' : 'in'})</label>
-            <input type="number" style={inputStyle} inputMode="decimal"
+            <input type="number" style={inputStyle} inputMode="decimal" aria-label="Height"
               value={fromCm(values.heightCm, system)}
-              onChange={(e) => register('heightCm').onChange({ target: { name: 'heightCm', value: e.target.value === '' ? undefined : toCm(Number(e.target.value), system) } })} />
+              onChange={(e) => setValue('heightCm', e.target.value === '' ? undefined : toCm(Number(e.target.value), system), { shouldValidate: true })} />
             {formState.errors.heightCm && <Err msg="Height must be 100–250 cm" />}
 
             <label style={labelStyle}>Current weight ({system === 'metric' ? 'kg' : 'lb'})</label>
-            <input type="number" style={inputStyle} inputMode="decimal"
+            <input type="number" style={inputStyle} inputMode="decimal" aria-label="Current weight"
               value={fromKg(values.weightKg, system)}
-              onChange={(e) => register('weightKg').onChange({ target: { name: 'weightKg', value: e.target.value === '' ? undefined : toKg(Number(e.target.value), system) } })} />
+              onChange={(e) => setValue('weightKg', e.target.value === '' ? undefined : toKg(Number(e.target.value), system), { shouldValidate: true })} />
             {formState.errors.weightKg && <Err msg="Weight must be 30–300 kg" />}
           </section>
         )}
@@ -215,9 +217,9 @@ export function AssessmentFlow({ sessionId }: { sessionId: string }) {
         {stepKey === 'goal' && (
           <section>
             <label style={labelStyle}>Target weight ({system === 'metric' ? 'kg' : 'lb'})</label>
-            <input type="number" style={inputStyle} inputMode="decimal"
+            <input type="number" style={inputStyle} inputMode="decimal" aria-label="Target weight"
               value={fromKg(values.targetWeightKg, system)}
-              onChange={(e) => register('targetWeightKg').onChange({ target: { name: 'targetWeightKg', value: e.target.value === '' ? undefined : toKg(Number(e.target.value), system) } })} />
+              onChange={(e) => setValue('targetWeightKg', e.target.value === '' ? undefined : toKg(Number(e.target.value), system), { shouldValidate: true })} />
             {formState.errors.targetWeightKg && <Err msg="Enter a valid target weight" />}
             <p style={{ color: 'var(--muted)', fontSize: 13, marginTop: 10 }}>
               Target should not exceed current weight or fall below BMI 18.5.
@@ -226,10 +228,10 @@ export function AssessmentFlow({ sessionId }: { sessionId: string }) {
         )}
 
         {stepKey === 'activity' && (
-          <section>
+          <section role="radiogroup" aria-label="Activity level">
             {ACTIVITIES.map((a) => (
-              <button type="button" key={a.value}
-                onClick={() => register('activity').onChange({ target: { name: 'activity', value: a.value } })}
+              <button type="button" key={a.value} role="radio" aria-checked={values.activity === a.value}
+                onClick={() => setValue('activity', a.value, { shouldValidate: true })}
                 style={{ display: 'block', width: '100%', textAlign: 'left', padding: 14, marginTop: 10, borderRadius: 10, minHeight: 44,
                   border: values.activity === a.value ? '2px solid var(--accent)' : '1px solid #d0d5dd',
                   background: values.activity === a.value ? 'rgba(47,125,107,.08)' : '#fff' }}>
@@ -269,7 +271,13 @@ export function AssessmentFlow({ sessionId }: { sessionId: string }) {
             <SaveBadge state={saveState} />
             <button type="submit" disabled={submitting}
               style={{ padding: '12px 22px', borderRadius: 8, minHeight: 44, border: 0, background: 'var(--accent)', color: '#fff', fontSize: 15 }}>
-              {stepIndex === STEPS.length - 1 ? (submitting ? 'Submitting…' : 'See my result') : 'Next'}
+              {stepIndex === STEPS.length - 1
+                ? submitting
+                  ? 'Submitting…'
+                  : editMode
+                    ? 'Update my result'
+                    : 'See my result'
+                : 'Next'}
             </button>
           </div>
         </div>

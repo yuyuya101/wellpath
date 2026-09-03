@@ -50,9 +50,10 @@ export const api = {
       body: JSON.stringify({ stepKey, answer, expectedRevision }),
     }),
 
-  submit: (id: string) =>
+  submit: (id: string, recalculate = false) =>
     request<{ recomputed: boolean; kind: string }>(`/api/assessments/${id}/submit`, {
       method: 'POST',
+      body: JSON.stringify({ recalculate }),
     }),
 
   result: (id: string) => request<Record<string, unknown>>(`/api/assessments/${id}/result`),

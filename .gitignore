@@ -31,3 +31,10 @@ dist
 npm-debug.log*
 pnpm-debug.log*
 *.tsbuildinfo
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+_build/
+.playwright-metadata/

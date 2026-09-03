@@ -48,3 +48,47 @@ body {
   font-size: 18px;
 }
 
+/* ---- T17 可访问性 / 移动 ---- */
+:focus-visible {
+  outline: 3px solid rgba(47, 125, 107, 0.45);
+  outline-offset: 2px;
+}
+
+button {
+  font-family: inherit;
+}
+
+a {
+  text-decoration: none;
+}
+
+.skip-link {
+  position: absolute;
+  left: -999px;
+  top: 0;
+  background: var(--accent);
+  color: #fff;
+  padding: 10px 14px;
+  border-radius: 0 0 8px 0;
+  z-index: 10;
+}
+.skip-link:focus {
+  left: 0;
+}
+
+@media (max-width: 480px) {
+  .container {
+    padding: 24px 16px;
+  }
+  h1 {
+    font-size: 24px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+

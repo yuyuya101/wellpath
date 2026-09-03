@@ -13,6 +13,7 @@ import {
 import { assess, type HealthResult } from '@/server/domain/health/assessment';
 import { fullProfileSchema, type FullProfile, type StepKey } from '@/server/validation/schemas';
 import { ProblemError } from '@/server/api/errors';
+import { nowTs, isoTs } from '@/server/infrastructure/db/time';
 
 const STEP_ORDER: StepKey[] = ['basics', 'goal', 'activity', 'condition'];
 
@@ -58,8 +59,39 @@ export interface SubmitOutcome {
   protectedMessage?: string;
 }
 
-/** 原子提交；重复提交不重算（返回已有结果，recomputed=false） */
-export async function submitAssessment(db: Db, sessionId: string): Promise<SubmitOutcome> {
+/** 读取步骤并计算出待持久化的 payload/freeSummary */
+async function computeOutcome(db: Db, sessionId: string) {
+  const steps = await db
+    .select({ stepKey: assessmentStep.stepKey, answer: assessmentStep.answer })
+    .from(assessmentStep)
+    .where(eq(assessmentStep.sessionId, sessionId));
+  const profile = assembleProfile(steps);
+  const outcome = assess(profile);
+  if (outcome.kind === 'protected') {
+    return {
+      kind: 'protected' as const,
+      payload: { kind: 'protected', reason: outcome.reason, message: outcome.message },
+      freeSummary: { kind: 'protected', message: outcome.message },
+    };
+  }
+  return {
+    kind: 'complete' as const,
+    payload: { kind: 'complete', profile, result: outcome.result },
+    freeSummary: buildFreeSummary(profile, outcome.result),
+  };
+}
+
+/**
+ * 原子提交。
+ * - 首次：组装->计算->写结果->submitted
+ * - 已 submitted 且未要求重算：幂等返回，不重算（防双击）
+ * - recalculate=true：允许已提交会话改答后重算（覆盖结果，权益保留）
+ */
+export async function submitAssessment(
+  db: Db,
+  sessionId: string,
+  recalculate = false,
+): Promise<SubmitOutcome> {
   const [session] = await db
     .select()
     .from(assessmentSession)
@@ -67,7 +99,7 @@ export async function submitAssessment(db: Db, sessionId: string): Promise<Submi
   if (!session || session.status === 'deleted') {
     throw new ProblemError('SESSION_NOT_FOUND', `session ${sessionId} not found`);
   }
-  if (session.status === 'submitted') {
+  if (session.status === 'submitted' && !recalculate) {
     const [existing] = await db
       .select()
       .from(assessmentResult)
@@ -79,39 +111,27 @@ export async function submitAssessment(db: Db, sessionId: string): Promise<Submi
     };
   }
 
-  const steps = await db
-    .select({ stepKey: assessmentStep.stepKey, answer: assessmentStep.answer })
-    .from(assessmentStep)
-    .where(eq(assessmentStep.sessionId, sessionId));
-  const profile = assembleProfile(steps);
-  const outcome = assess(profile);
-
+  const computed = await computeOutcome(db, sessionId);
   await db.transaction(async (tx) => {
-    if (outcome.kind === 'protected') {
-      await tx.insert(assessmentResult).values({
-        sessionId,
-        payload: { kind: 'protected', reason: outcome.reason, message: outcome.message },
-        freeSummary: { kind: 'protected', message: outcome.message },
-      });
-    } else {
-      const result = outcome.result;
-      await tx.insert(assessmentResult).values({
-        sessionId,
-        payload: { kind: 'complete', profile, result },
-        freeSummary: buildFreeSummary(profile, result),
-      });
-    }
+    await tx.delete(assessmentResult).where(eq(assessmentResult.sessionId, sessionId));
+    await tx.insert(assessmentResult).values({
+      sessionId,
+      payload: computed.payload,
+      freeSummary: computed.freeSummary,
+    });
     await tx
       .update(assessmentSession)
-      .set({ status: 'submitted', submittedAt: new Date(), updatedAt: new Date() })
+      .set({ status: 'submitted', submittedAt: isoTs(session.submittedAt ?? new Date()), updatedAt: nowTs() })
       .where(eq(assessmentSession.id, sessionId));
   });
 
   return {
     sessionId,
     recomputed: true,
-    kind: outcome.kind,
-    ...(outcome.kind === 'protected' ? { protectedMessage: outcome.message } : {}),
+    kind: computed.kind,
+    ...(computed.kind === 'protected'
+      ? { protectedMessage: String(computed.payload.message) }
+      : {}),
   };
 }
 

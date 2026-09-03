@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { ApiError, api, uuidv4 } from '@/lib/api-client';
 
 interface FullResult {
@@ -76,6 +77,12 @@ export function ResultView({ sessionId }: { sessionId: string }) {
   return (
     <main className="container">
       <span className="badge">Your result</span>
+
+      <p style={{ margin: '0 0 8px' }}>
+        <Link href={`/assessment/${sessionId}?edit=1`} style={{ color: 'var(--accent)', fontSize: 14 }}>
+          ← Edit my answers and recalculate
+        </Link>
+      </p>
 
       {data.access === 'protected' && (
         <section className="card">
