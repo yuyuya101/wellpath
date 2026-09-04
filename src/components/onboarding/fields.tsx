@@ -119,7 +119,7 @@ export function NumberField({
       {label && <label className="field-label">{label}</label>}
       <div style={{ position: 'relative' }}>
         <input
-          className="num-input"
+          className={`num-input${error ? ' has-error' : ''}`}
           type="number"
           inputMode="decimal"
           aria-label={ariaLabel ?? label}

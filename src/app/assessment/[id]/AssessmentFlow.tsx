@@ -20,6 +20,8 @@ import {
   type Screen,
   type StepKey,
 } from './flow-config';
+import { targetWeightIssue } from './validation';
+import { healthyMaxTargetWeight, healthyMinTargetWeight } from '@/server/domain/health/formulas';
 
 const FIELD_LIMITS: Record<string, [number, number]> = {
   ageYears: [18, 100],
@@ -171,11 +173,9 @@ export default function AssessmentFlow({
       const r = inRange(fld, v);
       if (r) return r;
       if (fld === 'targetWeightKg' && finiteNumber(v)) {
-        const cur = f.basics.weightKg;
-        if (f.goal.goal === 'lose' && finiteNumber(cur) && v >= cur)
-          return `For weight loss the target must be below your current ${cur} kg.`;
-        if (f.goal.goal === 'gain' && finiteNumber(cur) && v <= cur)
-          return `For weight gain the target must be above your current ${cur} kg.`;
+        // 与服务端同一套健康边界（方向 + BMI 18.5/25），当场拦截，不等提交
+        const issue = targetWeightIssue(f.goal.goal, f.basics.weightKg, f.basics.heightCm, v);
+        if (issue) return issue;
       }
       return null;
     }
@@ -230,6 +230,25 @@ export default function AssessmentFlow({
         setIdx((i) => i + 1);
       }
     } catch (e) {
+      // 服务端最终校验（如目标越过 BMI 健康带）返回字段级错误时，
+      // 直接跳回对应那一屏并内联标红，而不是在最后一屏只丢一句横幅让用户自己翻回去
+      if (e instanceof ApiError && e.problem?.fieldErrors) {
+        const entry = Object.entries(e.problem.fieldErrors)[0];
+        if (entry) {
+          const [fname, msgs] = entry;
+          const at = screens.findIndex(
+            (sc) => sc.field === fname || (sc.fields?.includes(fname) ?? false),
+          );
+          const msg = Array.isArray(msgs) && msgs.length ? String(msgs[0]) : errMessage(e);
+          if (at >= 0) {
+            setBanner(null);
+            setIdx(at);
+            setFieldError(msg);
+            if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
+            return;
+          }
+        }
+      }
       setBanner(errMessage(e));
     } finally {
       setBusy(false);
@@ -372,7 +391,7 @@ function targetCopy(sc: Screen, f: FormState): { label: string; hint?: string } 
   const h = f.basics.heightCm;
   const cur = f.basics.weightKg;
   if (f.goal.goal === 'gain') {
-    const ceiling = finiteNumber(h) ? Math.round(25 * (h / 100) ** 2 * 100) / 100 : undefined;
+    const ceiling = finiteNumber(h) ? healthyMaxTargetWeight(h) : undefined;
     return {
       label: 'Weight you want to reach',
       hint:
@@ -381,11 +400,13 @@ function targetCopy(sc: Screen, f: FormState): { label: string; hint?: string } 
           : 'Enter a target above your current weight.',
     };
   }
+  const floor = finiteNumber(h) ? healthyMinTargetWeight(h) : undefined;
   return {
     label: 'Your target weight',
-    hint: finiteNumber(cur)
-      ? `Below your current ${cur} kg. We enforce the healthy BMI 18.5 floor.`
-      : 'Enter a target below your current weight.',
+    hint:
+      finiteNumber(cur) && floor
+        ? `Below your current ${cur} kg. Healthy floor for your height is about ${floor} kg (BMI 18.5).`
+        : 'Enter a target below your current weight.',
   };
 }
 

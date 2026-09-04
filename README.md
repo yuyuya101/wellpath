@@ -21,7 +21,7 @@ RFC 9457 errors, automated tests at three levels and CI/CD on free tiers.
 | ORM | Drizzle ORM | SQL-transparent, typed migrations |
 | DB (prod) | PostgreSQL on Neon | Free, serverless Postgres |
 | DB (test) | PGlite (WASM) | Zero-install isolated DB per test |
-| Tests | Vitest (unit/integration) + Playwright (e2e) | 62 automated checks + dual-viewport smoke |
+| Tests | Vitest (unit/integration) + Playwright (e2e) | 72 automated checks + dual-viewport smoke |
 | Deploy | Netlify (OpenNext runtime) + Neon Postgres | $0 tier, no credit card, git-push deploys |
 
 ## Architecture
@@ -90,7 +90,7 @@ cp .env.example .env            # see docs/DEPLOYMENT.md; tests need NO .env DAT
 pnpm dev                        # local dev
 pnpm typecheck                  # tsc --noEmit (strict)
 pnpm lint                       # eslint
-pnpm test                       # Vitest: 62 unit/integration tests (PGlite)
+pnpm test                       # Vitest: 72 unit/integration tests (PGlite)
 pnpm build                      # production build
 pnpm test:e2e                   # Playwright dual-viewport smoke (run after build; needs DATABASE_URL)
 pnpm db:migrate                 # apply SQL migration to DATABASE_URL
@@ -110,7 +110,8 @@ pnpm verify                     # typecheck + lint + test + build
 | Business flow | Vitest | 16 | atomic submit/rollback, free-vs-full DTO gating incl. lockedFields/upgrade CTA, premium-expiry falls back to free, gain/maintain e2e + BMI25 ceiling, recovery single-use & expiry, idempotency, double-click, simulate-fail, rate limit, recompute, domain-rule→422 regression |
 | E2E | Playwright | 1 spec × 2 viewports | full funnel in real Chromium on desktop + iPhone 12 viewport |
 | Premium AI insights | Vitest | 4 | non-member -> 402 boundary, local-model unreachable -> rule-fallback (never hard-fails), local-model success -> parsed local-llm tips (fetch mocked), production-without-LLM skips the call entirely (no timeout wait) |
-| **Total** | | **62 + 2 e2e** | all green |
+| Onboarding validation | Vitest | 10 | target screen mirrors the server BMI 18.5/25 healthy band via shared pure formulas: direction + floor/ceiling, exact-boundary allowed, missing-height/empty guards (no late submit-time rejection) |
+| **Total** | | **72 + 2 e2e** | all green |
 
 ### Coverage scope & deliberate gaps
 **Why these scenarios** — they map 1:1 to the challenge's riskiest invariants: deterministic
